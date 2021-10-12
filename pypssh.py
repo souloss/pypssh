@@ -1,6 +1,7 @@
 #!/bin/env python
 import configparser
 import re
+import os
 import sys
 import platform
 import pprint
@@ -18,7 +19,26 @@ import click
 import gevent
 import json as jso
 
+default_config = """
+# 默认变量
+[vars]
+# 用户名
+user=root
+# 密码
+password=root
 
+# all 组主机列表
+[all]
+localhost
+
+# g1 组主机列表
+[g1]
+localhost:22:root:root
+
+# g1 组变量
+[g1:vars]
+password=root
+"""
 logging.basicConfig(level=logging.ERROR,format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 # logging.basicConfig(level = logging.DEBUG,format = '%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 logger = logging.getLogger(__name__)
@@ -108,13 +128,12 @@ def get_client():
 @click.option('-u', '--username', type=str, help="ssh帐号", required=False)
 @click.option('-p', '--password', type=str, help="ssh密码", required=False)
 @click.option('-P','--port',type=int,help='ssh端口',default=22,required=False)
-@click.argument('target', type=str, nargs=1, required=True)
+# @click.argument('target', type=str, nargs=1, required=True)
+@click.option('-g','--target',type=str,help='目标组',required=False)
 def cli(inventory, debug, username, password, port, target):
     """
-    该脚本用于批量执行命令/脚本以及批量上传下载文件, 需要注意的是:
-    \n
-      - 上传下载文件不支持通配符，需要明确指定文件/目录
-    \n
+    该脚本用于批量执行命令/脚本以及批量上传下载文件, 需要注意的是:\n
+      - 上传下载文件不支持通配符，需要明确指定文件/目录\n
       - 使用 test / prints 可以测试端口/ssh连通性和目标选取到的数据
     """
     if debug:
@@ -128,6 +147,17 @@ def cli(inventory, debug, username, password, port, target):
     global host_selected
     host_selected = get_operate_target(config._sections, target, username, password, port)
     logger.debug("Host Selected is %s" % repr(host_selected))
+
+
+@cli.command()
+def dump_default_config():
+    """
+    打印选择到的主机信息
+    """
+    os.makedirs("/etc/pypssh",exist_ok=True)
+    with open("/etc/pypssh/inventory.conf","w+") as file:
+        file.write(default_config)
+    pprint.pprint("默认配置写入 /etc/pypssh/inventory.conf 成功!")
 
 
 @cli.command()
@@ -149,7 +179,9 @@ def prints():
             )
 def execute(command, sudo, json, view, template):
     """
-    为目标批量执行命令
+    为目标批量执行命令\n
+    example:\n
+      pypssh -g all execute -c "echo hello world"
     """
     if json:
         logging.disable(50)
@@ -190,6 +222,8 @@ def execute(command, sudo, json, view, template):
 def put(local_file, remote_file):
     """
     为目标批量上传文件
+    example:
+      pypssh -g all put /etc/yum.conf /etc/yum.conf
     """
     client = get_client()
     # greenlets = client.copy_file(local_file,remote_file,recurse=True)
@@ -202,7 +236,9 @@ def put(local_file, remote_file):
 @click.argument('local_file', type=click.types.Path())
 def pull(remote_file, local_file):
     """
-    为目标批量下载文件
+    为目标批量下载文件\n
+    example:\n
+      pypssh -g all pull /etc/yum.conf /etc/yum.conf
     """
     client = get_client()
     # greenlets = client.copy_remote_file(remote_file,local_file,recurse=True)
@@ -215,11 +251,13 @@ def pull(remote_file, local_file):
 @click.option('--json', flag_value=True, type=bool, required=False)
 @click.option('--ssh-test/--no-ssh-test', default=True, type=bool)
 def test(timeout, json, ssh_test):
+    """
+    测试端口/ssh的连通性\n
+    example:\n
+      pypssh -g all test
+    """
     if json:
         logging.disable(50)
-    """
-    测试端口/ssh的连通性
-    """
     def _connect_test(host):
         s = gevent.socket.socket(
             gevent.socket.AF_INET, gevent.socket.SOCK_STREAM)
@@ -282,7 +320,9 @@ def test(timeout, json, ssh_test):
 @click.pass_context
 def execfile(ctx, script_file, json, template, script_arg, env, attachment, workdir):
     """
-    使本地脚本文件批量下发到远程执行
+    使本地脚本文件批量下发到远程执行\n
+    example:\n
+      pypssh -g all execfile test.sh arg1
     """
     if json:
         logging.disable(50)
@@ -305,8 +345,11 @@ def execfile(ctx, script_file, json, template, script_arg, env, attachment, work
 
 @cli.command()
 def version():
+    """
+    输出版本信息
+    """
     addr = "https://github.com/witchc/pypssh"
-    vno = "v0.0.9"
+    vno = "v0.1.0"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     print(
         "\n".join
@@ -317,5 +360,6 @@ def version():
             f"发行版: {platform.platform()}"
         ])
     )
+
 if __name__ == '__main__':
     cli()
