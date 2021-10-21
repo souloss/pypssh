@@ -1,31 +1,24 @@
-
-all:
-  192.168.31.133:
-    port: 22
-    username: mysql
-    # echo -n 'mysql$123' | base64
-    # echo -n 'bXlzcWwkMTIz' | base64 -d
-    password: bXlzcWwkMTIz
-  192.168.31.134:
-    port: 22
-    username: mysql
-    # echo -n 'mysql$123' | base64
-    # echo -n 'bXlzcWwkMTIz' | base64 -d
-    password: bXlzcWwkMTIz
-
-mysql:
-  192.168.31.133:
-    port: 22
-    username: mysql
-    # echo -n 'mysql$123' | base64
-    # echo -n 'bXlzcWwkMTIz' | base64 -d
-    password: bXlzcWwkMTIz
-
-redis:
-  192.168.31.135:
-    port: 22
-    username: mysql
-    # echo -n 'mysql$123' | base64
-    # echo -n 'bXlzcWwkMTIz' | base64 -d
-    password: bXlzcWwkMTIz
-
+192.168.31.133:
+  port: 22
+  username: mysql
+  # echo -n 'mysql$123' | base64
+  # echo -n 'bXlzcWwkMTIz' | base64 -d
+  password: bXlzcWwkMTIz
+  tags:
+    mysql: master
+192.168.31.134:
+  port: 22
+  username: mysql
+  # echo -n 'mysql$123' | base64
+  # echo -n 'bXlzcWwkMTIz' | base64 -d
+  password: bXlzcWwkMTIz
+  tags:
+    mysql: master
+192.168.31.[55:99]:
+  port: 22
+  username: mysql
+  # echo -n 'mysql$123' | base64
+  # echo -n 'bXlzcWwkMTIz' | base64 -d
+  password: bXlzcWwkMTIz
+  tags:
+    mysql: master
