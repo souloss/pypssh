@@ -23,6 +23,7 @@ import yaml
 import click
 import paramiko
 import marshmallow_dataclass
+from yaml import Loader
 
 ssh_formatter = logging.Formatter(fmt=f'%(asctime)s [%(hostname)s][%(levelname)s] %(message)s')
 ssh_streamHandler = logging.StreamHandler()
@@ -106,8 +107,8 @@ def is_letter_slice(s:str):
     except Exception:
         return False
 
-def expand_slice(rstr:str, slices:list) -> Dict[str,str]:
-    slice_dict = {}
+def expand_slice(slices:list) -> list:
+    slice_tuples = []
     for s in slices:
         slice_list = []
         if is_digest_slice(s):
@@ -118,25 +119,24 @@ def expand_slice(rstr:str, slices:list) -> Dict[str,str]:
             slice_list = [ chr(i) for i in range(ord(s0),ord(s1)) ]
         else:
             raise AssertionError("slice error " + s)
-        slice_dict[s] = slice_list
-    return slice_dict
+        slice_tuples.append((s, slice_list))
+    return slice_tuples
 
 
 def load_hosts(config_path:str)->Dict[str, Host]:
     result = {}
     with open(config_path) as file:
-        hosts = yaml.load(file)
+        hosts = yaml.load(file, Loader=Loader)
         for key in hosts.keys():
             find_slice = re.findall(SLICE_NON_GROUP_PATTERN, key)
             if find_slice:
-                slice_count = len(find_slice)
-                slice_dict = expand_slice(key, find_slice)
-                expand_dict = [ (key,value) for key in slice_dict.keys() for value in slice_dict[key] ]
-                combilist = list(filter(lambda i: len(set([ k[0] for k in i ]))==len(i), list(itertools.combinations(expand_dict,len(slice_dict)))))
+                slice_tuples = expand_slice(find_slice)
+                combilist = [ i for i in itertools.product(*[ i[1] for i in slice_tuples ])]
                 for comitem in combilist:
-                    for reitem in comitem:
-                        host = key.replace(str(reitem[0]),str(reitem[1]))
-                        result[host] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
+                    host = key
+                    for index, slice_key in enumerate([ i[0] for i in slice_tuples ]):
+                        host = host.replace(slice_key, str(comitem[index]), 1)
+                    result[host] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
             else:
                 result[key] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
     return result
@@ -297,5 +297,6 @@ def version():
     )
 
 if __name__ == '__main__':
-    cli()
+    # cli()
     # print(concurrent(realtime_output, [(Host(hostname="",username="",password="",sudo=True),"sudo tail -f /all.log"),(Host(hostname="",username=",password=",sudo=True),"sudo tail -f all.log")]))
+    pprint.pprint(load_hosts("config/inventory.yaml"))
