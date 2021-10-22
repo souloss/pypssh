@@ -18,17 +18,30 @@ pypssh -u root -p 'root!@#$' -P 22 -h 192.168.1.100 get [remotefile] [localdir]
 但对于中大规模的主机数量而言，没有配置文件不便于管理，所以 `pypssh` 提供配置的方式建立会话进行操作。配置文件为了便于解析和扩展我们采用了数据类对象转储的形式进行存储，数据类对象可以转储为 `json`，`yaml` 等格式。配置文件内容示例如下：
 
 ```yaml
-session:
-    - 
-      name: 192.168.100.100(root)
-      tags: 
-        - mysql=master
-        - redis=slave
-      hostname: 192.168.100.100
-      username: root
-      password: password
-      privatekey: /root/id_rsa
-      port: 22
+192.168.31.133:
+  port: 22
+  username: mysql
+  # echo -n 'mysql$123' | base64
+  # echo -n 'bXlzcWwkMTIz' | base64 -d
+  password: bXlzcWwkMTIz
+  tags:
+    mysql: master
+192.168.31.134:
+  port: 22
+  username: mysql
+  # echo -n 'mysql$123' | base64
+  # echo -n 'bXlzcWwkMTIz' | base64 -d
+  password: bXlzcWwkMTIz
+  tags:
+    mysql: master
+192.[22:26].[95:99].[95:99]:
+  port: 22
+  username: mysql
+  pkfile: "/root/.ssh/id_rsa"
+  pkpasswd: ""
+  sudo: false
+  tags:
+    mysql: master
 ```
 
 我们可以通过 命令行操作 或者 手动编写 两种形式进行配置。
