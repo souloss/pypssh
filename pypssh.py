@@ -51,7 +51,7 @@ class Mode(Enum):
 @dataclass
 class Host:
     """
-    会话类
+    主机类
     """
     hostname: str = "localhost"
     username: str = "root"
@@ -137,6 +137,7 @@ def load_hosts(config_path:str)->Dict[str, Host]:
                     for index, slice_key in enumerate([ i[0] for i in slice_tuples ]):
                         host = host.replace(slice_key, str(comitem[index]), 1)
                     result[host] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
+                    result[host].hostname = host
             else:
                 result[key] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
     return result
@@ -297,6 +298,6 @@ def version():
     )
 
 if __name__ == '__main__':
-    # cli()
+    cli()
     # print(concurrent(realtime_output, [(Host(hostname="",username="",password="",sudo=True),"sudo tail -f /all.log"),(Host(hostname="",username=",password=",sudo=True),"sudo tail -f all.log")]))
-    pprint.pprint(load_hosts("config/inventory.yaml"))
+    # pprint.pprint(load_hosts("config/inventory.yaml"))
