@@ -1,220 +1,238 @@
 #!/bin/env python
-import configparser
+
 import re
 import os
 import sys
-import platform
+import glob
+import time
 import pprint
-from string import Template
-import paramiko
-from pathlib import Path
-import yaml
+import select
 import logging
-from pssh.clients import ParallelSSHClient
-from typing import Union
-# from scp import SCPClient
-# from pssh.clients.native import ParallelSSHClient
-from gevent import joinall
+import platform
+import itertools
+import dataclasses
+from enum import Enum
+from pathlib import Path
+from dataclasses import dataclass, field
+
+from typing import Union, Optional, List, Callable,Dict
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures._base import as_completed
+
+import yaml
 import click
-import gevent
-import json as jso
+import paramiko
+import marshmallow_dataclass
 
-default_config = """
-# 默认变量
-[vars]
-# 用户名
-user=root
-# 密码
-password=root
-
-# all 组主机列表
-[all]
-localhost
-
-# g1 组主机列表
-[g1]
-localhost:22:root:root
-
-# g1 组变量
-[g1:vars]
-password=root
-"""
-logging.basicConfig(level=logging.ERROR,format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+ssh_formatter = logging.Formatter(fmt=f'%(asctime)s [%(hostname)s][%(levelname)s] %(message)s')
+ssh_streamHandler = logging.StreamHandler()
+ssh_streamHandler.setFormatter(ssh_formatter)
+# logging.basicConfig(level=logging.ERROR,format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 # logging.basicConfig(level = logging.DEBUG,format = '%(asctime)s:%(name)s:%(levelname)s:%(message)s')
-logger = logging.getLogger(__name__)
-config = configparser.ConfigParser(allow_no_value=True, delimiters=("="),strict=False)
-# 2020年6月17日 默认实现会将键转换为小写,这里改为不改变原来的键
-config.optionxform = lambda option: option
-# 大小写不明感
-IS_VARS = re.compile("((\w+):)?vars", re.I)
-# 标准输入流
-# stdin_text = click.get_text_stream('stdin')
-# stdin_text.readable()
+ssh_logger = logging.getLogger("ssh")
+ssh_logger.setLevel(logging.INFO)
+ssh_logger.removeHandler(ssh_logger.handlers)
+ssh_logger.addHandler(ssh_streamHandler)
 
-host_selected = dict()
-num_retries=1
-retry_delay=2
+SLICE_PATTERN = "\[(\w*):(\w*)\]"
+SLICE_NON_GROUP_PATTERN = "\[\w*:\w*\]"
+BANNER_TIMEOUT = 300
 
-# 返回为某个组的主机列表和主机配置
-
-
-def conversion_config(config:dict, group:str = 'all', username:str = None, password:str = None, port:int = None) -> dict:
-
-    # 设置默认组
-    config.setdefault('vars',dict())
-    config.setdefault('all',dict())
-
-    # 获取所有主机组和值
-    _host_groups = {key: dict(value) for key, value in config.items() if not re.match(IS_VARS, key)}
-    # 获取所有主机组,设置值为空字典
-    host_groups = {key: dict() for key in _host_groups.keys()}
-    # 获取所有变量组
-    vars_groups = {key: dict(value) for key, value in config.items() if re.match(IS_VARS, key)}
-
-    # 处理主机组
-    for item_group in _host_groups:
-        for host_str in list(_host_groups[item_group]):
-            _host = host_str.split(':')
-            host = _host[0]
-
-            # 将组变量合并到组主机
-            host_groups[item_group][host] = dict()
-            host_groups[item_group][host].update(vars_groups.get('vars', dict()))
-            host_groups[item_group][host].update(vars_groups.get(item_group + ':vars', dict()))
-
-            # 将内联变量合并到组主机
-            if len(_host) > 1 and _host[1]:
-                host_groups[item_group][host]['port'] = int(_host[1])
-            if len(_host) > 2 and _host[2]:
-                host_groups[item_group][host]['username'] = _host[2]
-            if len(_host) > 2 and _host[3]:
-                host_groups[item_group][host]['password'] = _host[3]
-
-            # 将命令行变量合并到组主机
-            if port:
-                host_groups[item_group][host]['port'] = port
-            if username:
-                host_groups[item_group][host]['username'] = username
-            if password:
-                host_groups[item_group][host]['password'] = password
-
-        # 将该组主机合并到 all 组中
-        host_groups['all'].update(host_groups[item_group])
-
-    if group:
-        return host_groups.get(group, dict())
-    else:
-        return host_groups
-
-def get_operate_target(config:dict, target:str, username:str, password:str, port:int) -> dict:
-    group_target = conversion_config(config, None, username, password, port)
-    host_target = {key: {key: dict(value)} for key, value in conversion_config(
-        config, 'all', username, password, port).items()}
-    result = {**host_target, **group_target}.get(target, dict())
-    return result if result else {target:{'username':username,'password':password,'port':port}}
-
-def get_client():
-    return ParallelSSHClient(
-                            list(host_selected.keys()), 
-                            host_config=host_selected, 
-                            num_retries=num_retries, 
-                            retry_delay=retry_delay,
-                            pool_size = 10 if len(host_selected) < 10 else len(host_selected),
-                            )
-
-@click.group()
-@click.option('-i', '--inventory', default='/etc/pypssh/inventory.conf', type=str, required=False)
-@click.option('-d', '--debug', flag_value=True, type=bool, required=False)
-@click.option('-u', '--username', type=str, help="ssh帐号", required=False)
-@click.option('-p', '--password', type=str, help="ssh密码", required=False)
-@click.option('-P','--port',type=int,help='ssh端口',default=22,required=False)
-# @click.argument('target', type=str, nargs=1, required=True)
-@click.option('-g','--target',type=str,help='目标组',required=False)
-def cli(inventory, debug, username, password, port, target):
+class Mode(Enum):
     """
-    该脚本用于批量执行命令/脚本以及批量上传下载文件, 需要注意的是:\n
-      - 上传下载文件不支持通配符，需要明确指定文件/目录\n
-      - 使用 test / prints 可以测试端口/ssh连通性和目标选取到的数据
+    该程序的反馈有两种模式
+      - 便于人类阅读的普通模式
+      - 便于程序交互的命令行模式
     """
-    if debug:
-        logger.setLevel(logging.DEBUG)
-    if not Path(inventory).is_file():
-        logger.warning("%s 不是有效的配置文件" % inventory)
+    PLAIN = 0
+    JSON = 1
+
+@dataclass
+class Host:
+    """
+    会话类
+    """
+    hostname: str = "localhost"
+    username: str = "root"
+    port: int = 22
+    password:str = ""
+    pkfile: str = ""
+    pkpasswd: str = ""
+    sudo:bool = False
+    timeout:int = 30
+    tags: Dict[str,str] = field(default_factory=dict)
+
+@dataclass
+class SSHResult:
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
+    returncode:int = 0
+    exception: Optional[Exception] = None
+    content: Union[bytes, str, None] = None
+
+def get_ssh_logger(host:Host):
+    return logging.LoggerAdapter(logger=ssh_logger, extra=dataclasses.asdict(host))
+
+def get_ssh_conn_client(host:Host):
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(
+        hostname=host.hostname,
+        username=host.username,
+        password=host.password,
+        passphrase=host.pkpasswd,
+        timeout=host.timeout,
+        banner_timeout=BANNER_TIMEOUT,
+        key_filename=host.pkfile if host.pkfile else None
+    )
+    return client
+
+def is_digest_slice(s:str):
+    if not re.match(SLICE_PATTERN, s):
+        return False
+    a,b = s[1:-1].split(":")
     try:
-        config.read(inventory)
-    except Exception as ex:
-        logger.warning(ex)
-    global host_selected
-    host_selected = get_operate_target(config._sections, target, username, password, port)
-    logger.debug("Host Selected is %s" % repr(host_selected))
+        return re.match("\d+",a).group() == a and re.match("\d+",b).group() == b
+    except Exception:
+        return False
 
+def is_letter_slice(s:str):
+    if not re.match(SLICE_PATTERN, s):
+        return False
+    a,b = s[1:-1].split(":")
+    try:
+        return re.match("\w+",a).group() == a and re.match("\w+",b).group() == b
+    except Exception:
+        return False
 
-@cli.command()
-def dump_default_config():
-    """
-    打印选择到的主机信息
-    """
-    os.makedirs("/etc/pypssh",exist_ok=True)
-    with open("/etc/pypssh/inventory.conf","w+") as file:
-        file.write(default_config)
-    pprint.pprint("默认配置写入 /etc/pypssh/inventory.conf 成功!")
-
-
-@cli.command()
-def prints():
-    """
-    打印选择到的主机信息
-    """
-    pprint.pprint(host_selected,None,2,160,None)
-
-
-@cli.command()
-@click.option('-c', '--command', prompt='command', type=str, help="需要批量执行的命令")
-@click.option('-s', '--sudo', flag_value=True, type=bool, required=False, help="是否开启sudo")
-@click.option('--json', flag_value=True, type=bool, required=False, help="将结果 json 化")
-@click.option('--view', type=click.Choice(['fail', 'success'], case_sensitive=False), required=False, help="根据条件仅查看输出结果的一部分，目前的条件只支持命令是否执行成功")
-@click.option('-t', '--template', 
-              default="- Host: \n${host}\n- Command: \n${command}\n- Exception: \n${exstr}\n- STDOUT: \n${stdout}\n- STDERR: \n${stderr}\n- EXIT_CODE: \n${exit_code}\n", 
-              type=str,help="python模版字符串,使用${var}能输出模板变量，目前支持的变量有host,command,exstr,stdout,stderr"
-            )
-def execute(command, sudo, json, view, template):
-    """
-    为目标批量执行命令\n
-    example:\n
-      pypssh -g all execute -c "echo hello world"
-    """
-    if json:
-        logging.disable(50)
-    client = get_client()
-    output = client.run_command(command, stop_on_errors = False, sudo=sudo)
-    client.join(output)
-    logger.debug(output.items())
-    results = []
-    for host, host_output in output.items():
-        exstr = repr(host_output.exception)
-        stdout = '\n'.join([line for line in host_output.stdout]) if host_output.stdout else ''
-        stderr = '\n'.join([line for line in host_output.stderr]) if host_output.stderr else ''
-        exit_code = host_output.exit_code
-        result_template = Template(template)
-        result = {
-            'host':host,
-            'command':command,
-            'exstr':exstr,
-            'stdout':stdout,
-            'stderr':stderr,
-            'exit_code':exit_code
-        }
-        if view:
-            if (view=="fail" and exit_code==0) or (view=="success" and exit_code!=0):
-                continue
-
-        if json:
-            results.append(result)
+def expand_slice(rstr:str, slices:list) -> Dict[str,str]:
+    slice_dict = {}
+    for s in slices:
+        slice_list = []
+        if is_digest_slice(s):
+            s0, s1 = re.match(SLICE_PATTERN, s).groups()
+            slice_list = list(range(int(s0),int(s1)))
+        elif is_letter_slice(s):
+            s0, s1 = re.match(SLICE_PATTERN, s).groups()
+            slice_list = [ chr(i) for i in range(ord(s0),ord(s1)) ]
         else:
-            click.echo(result_template.substitute(result))
-    if json:
-        click.echo(jso.dumps(results,ensure_ascii=False))
+            raise AssertionError("slice error " + s)
+        slice_dict[s] = slice_list
+    return slice_dict
 
+
+def load_hosts(config_path:str)->Dict[str, Host]:
+    result = {}
+    with open(config_path) as file:
+        hosts = yaml.load(file)
+        for key in hosts.keys():
+            find_slice = re.findall(SLICE_NON_GROUP_PATTERN, key)
+            if find_slice:
+                slice_count = len(find_slice)
+                slice_dict = expand_slice(key, find_slice)
+                expand_dict = [ (key,value) for key in slice_dict.keys() for value in slice_dict[key] ]
+                combilist = list(filter(lambda i: len(set([ k[0] for k in i ]))==len(i), list(itertools.combinations(expand_dict,len(slice_dict)))))
+                for comitem in combilist:
+                    for reitem in comitem:
+                        host = key.replace(str(reitem[0]),str(reitem[1]))
+                        result[host] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
+            else:
+                result[key] = marshmallow_dataclass.class_schema(Host)().load(hosts[key])
+    return result
+
+MODE = Mode.PLAIN
+
+
+# root cmd
+@click.group()
+def cli(inventory, level, mode, config):
+    pass
+
+# config cmd
+"""
+TODO 通过命令行编辑主机配置文件
+@cli.group()
+def config():
+    pass
+
+@config.command()
+def add_host():
+    pass
+
+@config.command()
+def del_host():
+    pass
+"""
+
+# func cmd
+"""
+exec
+"""
+def linesplit(socket):
+    buffer_bytes = socket.recv(4048)
+    buffer_string = buffer_bytes.decode()
+    done = False
+    while not done:
+        if "\n" in buffer_string:
+            (line, buffer_string) = buffer_string.split("\n", 1)
+            yield line
+        else:
+            more = socket.recv(4048)
+            if not more:
+                done = True
+            else:
+                buffer_string = buffer_string + more.decode()
+    if buffer_string:
+        yield buffer_string
+
+def realtime_output(host:Host, command:str):
+    client = get_ssh_conn_client(host)
+    try:
+        transport = client.get_transport()
+        channel = transport.open_session()
+        # 必须获取 pty 才能有机会输入 sudo
+        channel.get_pty()
+        # 若是非阻塞则强制 recv 时会造成错误
+        # channel.setblocking(0)  
+        channel.exec_command(command)
+        lines = []
+        if host.sudo:
+            while channel.recv_ready()==False:
+                stdout = channel.recv(4096)
+                if re.search('\[sudo\] ' ,stdout.decode()):
+                    channel.send(host.password+'\n')
+                time.sleep(1)
+        while True:
+            rl, _, _ = select.select([channel], [], [], 0.0)
+            if len(rl) > 0:
+                for line in linesplit(channel):
+                    lines.append(line)
+                    get_ssh_logger(host).info(line)
+    except Exception as ex:
+        pass
+    finally:
+        client.close()
+    return "\n".join(lines)
+
+def concurrent(func:Callable, tasks:list):
+    with ThreadPoolExecutor(max_workers = len(tasks)) as executor:
+        future_list = list()
+        result_list = list()
+        for task in tasks:
+            future_list.append(executor.submit(func, *task))
+        for future in as_completed(future_list):
+            result_list.append(future.result())
+        return result_list
+
+@cli.command()
+def execute():
+    """
+    批量执行命令
+    """
+    # 先 ping 所有选中的主机，若存在不通的主机并且没有开启忽略选项则直接失败
+    # 捕获错误
+    pass
 
 @cli.command()
 @click.argument('local_file', type=click.types.Path(exists=True))
@@ -225,11 +243,7 @@ def put(local_file, remote_file):
     example:
       pypssh -g all put /etc/yum.conf /etc/yum.conf
     """
-    client = get_client()
-    # greenlets = client.copy_file(local_file,remote_file,recurse=True)
-    greenlets = client.scp_send(local_file, remote_file, recurse=True)
-    joinall(greenlets, raise_error=False)
-
+    pass
 
 @cli.command()
 @click.argument('remote_file', type=click.types.Path())
@@ -240,116 +254,37 @@ def pull(remote_file, local_file):
     example:\n
       pypssh -g all pull /etc/yum.conf /etc/yum.conf
     """
-    client = get_client()
-    # greenlets = client.copy_remote_file(remote_file,local_file,recurse=True)
-    greenlets = client.scp_recv(remote_file, local_file, recurse=True)
-    joinall(greenlets, raise_error=False)
+    pass
+
+@cli.command()
+def ls():
+    """
+    列出选中的主机
+    """
+    pass
 
 
 @cli.command()
-@click.option('-t', '--timeout', default=1.0, type=float)
-@click.option('--json', flag_value=True, type=bool, required=False)
-@click.option('--ssh-test/--no-ssh-test', default=True, type=bool)
-def test(timeout, json, ssh_test):
+def ping():
     """
-    测试端口/ssh的连通性\n
-    example:\n
-      pypssh -g all test
+    测试主机是否连通
     """
-    if json:
-        logging.disable(50)
-    def _connect_test(host):
-        s = gevent.socket.socket(
-            gevent.socket.AF_INET, gevent.socket.SOCK_STREAM)
-        s.timeout = timeout
-        try:
-            s.connect((host[0], host[1]['port']))
-        except Exception as ex:
-            logger.error(f"{host[0]}:{host[1]['port']} 出现异常:{repr(ex)}")
-            return None
-        s.close()
-        return host
-
-    def _ssh_test(host):
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        try:
-            client.connect(
-                hostname=host[0],
-                password=host[1]['password'],
-                username=host[1]['username'],
-                port= host[1]['port'],
-                timeout=timeout,
-                look_for_keys=False,
-                allow_agent=False
-                )
-        except Exception as ex:
-            logger.error(f"{host[0]}:{host[1]['port']} 出现异常: {repr(ex)}")
-            return None
-        finally:
-            client.close()
-        return host
-
-    all_hosts = []
-    all_hosts = list(host_selected.items())
-    conns = [gevent.spawn(_ssh_test if ssh_test else _connect_test, host)
-             for host in all_hosts]
-
-    working_hosts = [s.get()[0]
-                     for s in gevent.joinall(conns) if s.get() is not None]
-    all_hosts = [item[0] for item in all_hosts]
-    if json:
-        click.echo(jso.dumps({'working_host':list(set(working_hosts)),'non_working_host':list(set(all_hosts) - set(working_hosts))}))
-    else:
-        click.echo('Working_host：\n' + repr(list(set(working_hosts))))
-        click.echo('Non-Working_host：\n' + repr(list(set(all_hosts) - set(working_hosts))))
+    pass
 
 
-# 远程执行脚本文件，可以从配置文件加载变量，可以读参数变量
+
 @cli.command()
-@click.argument('script_file', type=click.types.Path())
-@click.argument('script_arg', type=str, nargs=-1, required=False)
-@click.option('--json', flag_value=True, type=bool, required=False)
-@click.option('-t', '--template', 
-              default="- Host: \n${host}\n- Exception: \n${exstr}\n- STDOUT: \n${stdout}\n- STDERR: \n${stderr}\n", 
-              type=str,help="python模版字符串,使用${var}能输出模板变量，目前支持的变量有host,command,exstr,stdout,stderr"
-            )
-@click.option('-e','--env', type=str, multiple=True, required=False, help='脚本执行需要的环境变量')
-@click.option('-a', '--attachment', type=str, multiple=True, required=False, help='执行脚本所需要的附属文件')
-@click.option('-w','--workdir',default='/tmp/.pypssh/',type=str, help='工作区')
-@click.pass_context
 def execfile(ctx, script_file, json, template, script_arg, env, attachment, workdir):
     """
-    使本地脚本文件批量下发到远程执行\n
-    example:\n
-      pypssh -g all execfile test.sh arg1
+    远程执行脚本文件，可以从配置文件加载变量，可以读参数变量
     """
-    if json:
-        logging.disable(50)
-    put_files = []
-    if not Path(script_file).is_file():
-        raise AssertionError("script_file must is file!")
-    remote_file = str(Path(workdir).joinpath(Path(script_file).name))
-    put_files.append(remote_file)
-    ctx.invoke(put, local_file=script_file, remote_file=remote_file)
-    for att_item in attachment:
-        remote_att_file = str(Path(workdir).joinpath(Path(att_item).name))
-        ctx.invoke(put, local_file=att_item, remote_file=remote_att_file)
-        put_files.append(remote_att_file)
-    logger.debug(f'put files is: {put_files}')
-    script_env = ''.join(["export %s && " % item for item in env])
-    script_arg_str = ' '.join(script_arg)
-    command = f"{script_env} cd {workdir} && chmod +x {remote_file} && {remote_file} {script_arg_str} && rm -rf {' '.join(put_files)}"
-    logger.debug(command)
-    ctx.invoke(execute, command=command, json=json, template=template)
+    pass
+
 
 @cli.command()
 def version():
-    """
-    输出版本信息
-    """
     addr = "https://github.com/witchc/pypssh"
-    vno = "v0.1.0"
+    vno = "v0.2.0"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     print(
         "\n".join
@@ -363,3 +298,4 @@ def version():
 
 if __name__ == '__main__':
     cli()
+    # print(concurrent(realtime_output, [(Host(hostname="",username="",password="",sudo=True),"sudo tail -f /all.log"),(Host(hostname="",username=",password=",sudo=True),"sudo tail -f all.log")]))
