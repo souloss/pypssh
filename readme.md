@@ -86,13 +86,16 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 
 约定：
 - 它默认使用 `~/.pypssh/` 作为数据目录存放自己的数据和配置文件。
-- 所有子命令的输出都使用 `click.echo(yaml.dump({{result}}}))` 的形式，这样既能保证人类可读也便于其它程序调用和解析。
-- 
+- 所有子命令的输出暂时都使用 `click.echo(yaml.dump({{result}}, allow_unicode=True))` 的形式，这样既能保证人类可读也便于其它程序调用和解析，之后再使用模板封装输出函数。
+- 任务函数中使用 `get_ssh_logger(host)` 获取日志实例，这样能在每条日志头部打印主机名。
 
 ### 开发计划
 
 #### 功能
+- 新增 `config` 子命令，用于加载，生成和修改配置文件。
+- 编写根据标签表达式选择主机实体的解析器。
 
 #### 优化
+
 ### 开发者参考
 [click文档](https://click.palletsprojects.com/en/7.x/)
