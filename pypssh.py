@@ -56,12 +56,14 @@ class Host:
     pkfile: str = ""
     pkpasswd: str = ""
     sudo: bool = False
-    timeout: int = 1
+    timeout: int = 5
     tags: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class SSHResult:
+    hostname: str
+    command: str
     stdout: Optional[str] = None
     stderr: Optional[str] = None
     returncode: int = 0
@@ -145,6 +147,7 @@ def load_hosts(config_path: str) -> Dict[str, Host]:
             else:
                 result[key] = marshmallow_dataclass.class_schema(
                     Host)().load(hosts[key])
+                result[key].hostname = key
     return result
 
 # execute utils
@@ -170,6 +173,7 @@ def linesplit(socket):
 
 def realtime_output(host: Host, command: str):
     client = get_ssh_conn_client(host)
+    returncode = 0
     try:
         transport = client.get_transport()
         channel = transport.open_session()
@@ -186,16 +190,21 @@ def realtime_output(host: Host, command: str):
                     channel.send(host.password+'\n')
                 time.sleep(1)
         while True:
+            time.sleep(0.001)
             rl, _, _ = select.select([channel], [], [], 0.0)
             if len(rl) > 0:
                 for line in linesplit(channel):
                     lines.append(line)
                     get_ssh_logger(host).info(line)
+            if channel.exit_status_ready():
+                returncode = channel.recv_exit_status()
+                break
+        # returncode = channel.recv_exit_status()
     except Exception as ex:
-        pass
+        return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode, exception=ex)
     finally:
         client.close()
-    return "\n".join(lines)
+    return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode)
 
 
 def concurrent(func: Callable, tasks: list):
@@ -213,6 +222,8 @@ def concurrent(func: Callable, tasks: list):
 
 def get_target(hosts, name):
     result = []
+    if name not in hosts:
+        raise AssertionError(f"not found host {name}")
     result.append(hosts[name])
     return result
 
@@ -254,8 +265,16 @@ exec
 
 
 @cli.command()
-def execute():
-    pass
+@click.option('-c', '--command', type=str, required=True)
+@click.option('--needpty', default=True, type=bool, required=False)
+@click.option('--sudo', default=False, type=bool, required=False)
+def execute(command, needpty, sudo):
+    result = []
+    if needpty:
+        result = concurrent(realtime_output, [tuple([i, command]) for i in TARGET])
+    else:
+        raise NotImplementedError("not impl nonpty command!")
+    click.echo(yaml.dump(result, allow_unicode=True))
 
 
 @cli.command()
@@ -287,7 +306,7 @@ def pull(remote_file, local_file):
 
 @cli.command()
 def ls():
-    click.echo(yaml.dump([i.hostname for i in TARGET]))
+    click.echo(yaml.dump([i.hostname for i in TARGET], allow_unicode=True))
 
 
 @cli.command()
@@ -318,7 +337,7 @@ def ping():
     s = concurrent(_ssh_test, [tuple([i]) for i in c])
     result = {'working_host': [i.hostname for i in s], 'non_working_host': [
         i.hostname for i in TARGET if i not in s]}
-    click.echo(yaml.dump(result))
+    click.echo(yaml.dump(result, allow_unicode=True))
 
 
 @cli.command()
