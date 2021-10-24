@@ -41,9 +41,6 @@ MAIN_DIR = os.path.join(os.path.expanduser('~'), ".pypssh")
 SLICE_PATTERN = "\[(\w*):(\w*)\]"
 SLICE_NON_GROUP_PATTERN = "\[\w*:\w*\]"
 BANNER_TIMEOUT = 300
-# plugins
-PLUGIN_FOLDER = os.path.join(MAIN_DIR, "plugins")
-
 TARGET = []
 
 
