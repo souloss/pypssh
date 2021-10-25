@@ -3,6 +3,7 @@
 import re
 import os
 import sys
+import ast
 import glob
 import time
 import socket
@@ -11,6 +12,7 @@ import select
 import logging
 import platform
 import itertools
+import functools
 import dataclasses
 from enum import Enum
 from pathlib import Path
@@ -69,6 +71,66 @@ class SSHResult:
     returncode: int = 0
     exception: Optional[Exception] = None
     content: Union[bytes, str, None] = None
+
+
+class Evaluator(ast.NodeTransformer):
+
+    def __init__(self, data) -> None:
+        super().__init__()
+        self.data = data
+
+    def visit_UnaryOp(self, node):
+        self.generic_visit(node)
+        if isinstance(node.operand, ast.Name):
+            unaryop = {
+                ast.Not: lambda a: not a
+            }.get(node.op.__class__)
+            return unaryop(node.operand.id in self.data.keys())
+        else:
+            raise NotImplementedError(
+                f"row {node.lineno} col {node.col_offset} error, {type(node.operand).__name__} is an unsupported operation!")
+
+    def visit_Compare(self, node):
+        self.generic_visit(node)
+        if isinstance(node.left, ast.Name):
+            result = False
+            lval = self.data.get(node.left.id)
+            for op, rnode in zip(node.ops, node.comparators):
+                cmpop = {
+                    ast.Eq: lambda a, b: a == b,
+                    ast.In: lambda a, b: a in b,
+                    ast.Is: lambda a, b: a is b,
+                    ast.IsNot: lambda a, b: a is not b,
+                    ast.NotEq: lambda a, b: a != b,
+                    ast.NotIn: lambda a, b: a not in b,
+                }.get(op.__class__)
+                rval = rnode.id
+                if cmpop:
+                    result = cmpop(lval, rval)
+                    lval = rval
+                else:
+                    raise NotImplementedError(
+                        f"row {node.lineno} col {node.col_offset} error, {type(op).__name__} is an unsupported operation!")
+            return ast.Constant(value=result)
+        else:
+            raise NotImplementedError(
+                f"row {node.lineno} col {node.col_offset} error, {type(node.left).__name__} is an unsupported operation!")
+
+    def visit_BoolOp(self, node):
+        self.generic_visit(node)
+        boolop = {
+            ast.And: lambda a, b: a and b,
+            ast.Or: lambda a, b: a or b,
+        }.get(node.op.__class__)
+        return functools.reduce(boolop, [i for i in map(lambda v:v.value, node.values)])
+
+    def eval(self, expr: str):
+        tree = ast.parse(expr)
+        tree = ast.fix_missing_locations(self.visit(tree))
+        if len(tree.body) == 1:
+            return tree.body[0].value
+        else:
+            raise AssertionError(f"{tree.body} eval exception!")
 
 
 def get_ssh_logger(host: Host):
@@ -220,11 +282,17 @@ def concurrent(func: Callable, tasks: list):
         return result_list
 
 
-def get_target(hosts, name):
+def get_target(hosts: Dict[str, Host], name):
     result = []
-    if name not in hosts:
-        raise AssertionError(f"not found host {name}")
-    result.append(hosts[name])
+    if name in hosts.keys():
+        result.append(hosts[name])
+    else:
+        for host in hosts.values():
+            try:
+                if Evaluator(host.tags).eval(name):
+                    result.append(host)
+            except Exception as ex:
+                get_ssh_logger(host.hostname).warn(ex)
     return result
 
 # root cmd
@@ -239,7 +307,8 @@ def cli(ctx, inventory, log_level, target):
     hosts = load_hosts(inventory)
     ssh_logger.setLevel(log_level)
     global TARGET
-    TARGET = get_target(hosts, target)
+    if target:
+        TARGET = get_target(hosts, target)
 
 
 # config cmd
@@ -271,7 +340,8 @@ exec
 def execute(command, needpty, sudo):
     result = []
     if needpty:
-        result = concurrent(realtime_output, [tuple([i, command]) for i in TARGET])
+        result = concurrent(
+            realtime_output, [tuple([i, command]) for i in TARGET])
     else:
         raise NotImplementedError("not impl nonpty command!")
     click.echo(yaml.dump(result, allow_unicode=True))
@@ -334,11 +404,16 @@ def ping():
 
     c = [i for i in concurrent(_connect_test, [tuple([i])
                                for i in TARGET]) if i]
-    s = concurrent(_ssh_test, [tuple([i]) for i in c])
-    result = {'working_host': [i.hostname for i in s], 'non_working_host': [
-        i.hostname for i in TARGET if i not in s]}
+    s = concurrent(_ssh_test, [tuple([i]) for i in c if i])
+
+    working_host =  [i.hostname for i in s if i]
+    non_working_host = [i.hostname for i in TARGET if i not in s]
+    working_host.sort(key=lambda key:int(key.replace(".","")))
+    non_working_host.sort(key=lambda key:int(key.replace(".","")))
+    result = {'working_host': working_host, 'non_working_host':non_working_host}
     click.echo(yaml.dump(result, allow_unicode=True))
 
+    
 
 @cli.command()
 def version():
