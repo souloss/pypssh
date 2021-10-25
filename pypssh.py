@@ -6,27 +6,32 @@ import sys
 import ast
 import glob
 import time
+import json
 import socket
 import pprint
 import select
 import logging
 import platform
+import textwrap
 import itertools
 import functools
 import dataclasses
+
 from enum import Enum
 from pathlib import Path
 from dataclasses import dataclass, field
-
-from typing import Union, Optional, List, Callable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures._base import as_completed
+from typing import Union, Optional, List, Callable, Dict
 
 import yaml
 import click
 import paramiko
 import marshmallow_dataclass
+
 from yaml import Loader
+from scp import SCPClient
+from jinja2 import Template
 
 ssh_formatter = logging.Formatter(
     fmt=f'%(asctime)s [%(hostname)s][%(levelname)s] %(message)s')
@@ -69,9 +74,15 @@ class SSHResult:
     stdout: Optional[str] = None
     stderr: Optional[str] = None
     returncode: int = 0
-    exception: Optional[Exception] = None
-    content: Union[bytes, str, None] = None
+    exception: Optional[str] = None
 
+@dataclass
+class SCPResult:
+    hostname: str
+    src: str
+    dst: str
+    completed: bool = False
+    exception: Optional[str] = None
 
 class Evaluator(ast.NodeTransformer):
 
@@ -139,7 +150,7 @@ def get_ssh_logger(host: Host):
 
 def get_ssh_conn_client(host: Host):
     client = paramiko.SSHClient()
-    client.load_system_host_keys()
+    # client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(
         hostname=host.hostname,
@@ -263,7 +274,7 @@ def realtime_output(host: Host, command: str):
                 break
         # returncode = channel.recv_exit_status()
     except Exception as ex:
-        return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode, exception=ex)
+        return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode, exception=repr(ex))
     finally:
         client.close()
     return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode)
@@ -299,9 +310,9 @@ def get_target(hosts: Dict[str, Host], name):
 
 
 @click.group()
-@click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=str, required=False)
+@click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=str, required=False, help="inventory.yaml path")
 @click.option('-l', '--log-level', default='INFO', type=click.Choice(["NOTSET", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]), required=False)
-@click.option('-t', 'target', type=str, required=False)
+@click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
 @click.pass_context
 def cli(ctx, inventory, log_level, target):
     hosts = load_hosts(inventory)
@@ -312,24 +323,58 @@ def cli(ctx, inventory, log_level, target):
 
 
 # config cmd
-"""
-TODO 通过命令行编辑主机配置文件
 @cli.group()
 def config():
     pass
 
-@config.command()
-def add_host():
-    pass
-
-@config.command()
-def del_host():
-    pass
+default_config ="""
+localhost:
+  port: 22
+  username: root
+  password: youerpassword
+  tags:
+    yourtagkey: yourtagvalue
 """
+@config.command()
+def dump_default():
+    """
+    wirte default config
+    """
+    Path(MAIN_DIR).joinpath("inventory").mkdir(exist_ok=True, parents=True)
+    with open(Path(MAIN_DIR).joinpath("inventory").joinpath("inventory.yaml"), "w") as f:
+        f.write(default_config)
+    click.echo(f'default config write {Path(MAIN_DIR).joinpath("inventory").joinpath("inventory.yaml")} successfully!')
+
+
+# @config.command()
+# def add_host():
+#     pass
+
+# @config.command()
+# def del_host():
+#     pass
+
 
 # func cmd
 """
 exec
+"""
+
+default_template = """
+========== {{ hostname }} ==========
+command: {{ command }}
+{% if stdout %}
+stdout:
+{{stdout}}
+{% endif %}
+{% if stderr %}
+stderr:
+{{stderr}}
+{% endif %}
+returncode: {{ returncode }}
+{% if exception %}
+exception: {{ exception }}
+{% endif %}
 """
 
 
@@ -337,50 +382,181 @@ exec
 @click.option('-c', '--command', type=str, required=True)
 @click.option('--needpty', default=True, type=bool, required=False)
 @click.option('--sudo', default=False, type=bool, required=False)
-def execute(command, needpty, sudo):
+@click.option('-o', '--outmode', default="none", type=click.Choice(["none", "template", "json", "yaml"]))
+@click.option('-t', '--template', default=default_template, type=str, required=False)
+def execute(command, needpty, sudo, outmode, template):
+    """
+    execute command
+    """
     result = []
     if needpty:
         result = concurrent(
-            realtime_output, [tuple([i, command]) for i in TARGET])
+            realtime_output, [tuple([h, command]) for h in TARGET])
     else:
         raise NotImplementedError("not impl nonpty command!")
-    click.echo(yaml.dump(result, allow_unicode=True))
+    if outmode == "none":
+        return
+    elif outmode == "template":
+        template = Template(template, lstrip_blocks=True, trim_blocks=True)
+        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
+        for r in result:
+            click.echo(template.render(dataclasses.asdict(r)))
+    elif outmode == "json":
+        click.echo(marshmallow_dataclass.class_schema(
+            SSHResult)().dumps(result, many=True))
+    elif outmode == "yaml":
+        click.echo(yaml.dump(result, allow_unicode=True))
 
 
 @cli.command()
-def execfile(ctx, script_file, json, template, script_arg, env, attachment, workdir):
-    pass
+@click.argument('script_file', type=click.types.Path())
+@click.argument('script_arg', type=str, nargs=-1, required=False)
+@click.option('-e','--env', type=str, multiple=True, required=False)
+@click.option('-a', '--attachment', type=str, multiple=True, required=False)
+@click.option('-w', '--workdir', default='/root' ,type=str)
+@click.option('--needpty', default=True, type=bool, required=False)
+@click.option('--sudo', default=False, type=bool, required=False)
+@click.option('-o', '--outmode', default="none", type=click.Choice(["none", "template", "json", "yaml"]))
+@click.option('-t', '--template', default=default_template, type=str, required=False)
+@click.pass_context
+def execfile(ctx, script_file, script_arg, env, attachment, workdir, needpty, sudo, outmode, template):
+    """
+    execute script file
+    """
+    if not Path(script_file).is_file():
+        raise AssertionError("script_file must is executable file!")
+    remote_file = str(Path(workdir).joinpath(Path(script_file).name))
+    put_files = []
+    try:
+        put_files.append(remote_file)
+        ctx.invoke(put, local_file=script_file, remote_file=remote_file)
+        for att_item in attachment:
+            remote_att_file = str(Path(workdir).joinpath(Path(att_item).name))
+            ctx.invoke(put, local_file=att_item, remote_file=remote_att_file)
+            put_files.append(remote_att_file)
+        script_env = ''.join(["export %s && " % item for item in env])
+        script_arg_str = ' '.join(script_arg)
+        command = f"{script_env} cd {workdir} && chmod +x {remote_file} && {remote_file} {script_arg_str}"
+        ctx.invoke(execute, command=command, outmode=outmode, template=template)
+    finally:
+        command = f"rm -rf {' '.join(put_files)}"
+        ctx.invoke(execute, command=command, outmode=outmode, template=template)
 
+put_default_template = "{{src}} =====> {{hostname}}:{{dst}} {% if completed %} successfully! {% else %} faild! {% endif %}"
 
 @cli.command()
 @click.argument('local_file', type=click.types.Path(exists=True))
 @click.argument('remote_file', type=click.types.Path())
-def put(local_file, remote_file):
+@click.option('-o', '--outmode', default="none", type=click.Choice(["none", "template", "json", "yaml"]))
+@click.option('-t', '--template', default=put_default_template, type=str, required=False)
+@click.option('-r', '--recursive', default=True, type=bool)
+@click.option('-p', '--process', default=False, type=bool)
+def put(local_file, remote_file, outmode, template, recursive, process):
     """
-    example:\n
+    upload file
+    example:
       pypssh -t 192.168.31.1 put /etc/yum.conf /etc/yum.conf
     """
-    pass
+    def _progress(filename, size, sent, peername):
+        click.echo("(%s:%s) %s's progress: %.2f%%   \r" % (
+            peername[0], peername[1], filename, float(sent)/float(size)*100))
 
+    def _upload(host):
+        try:
+            ssh = get_ssh_conn_client(host)
+            scp = SCPClient(ssh.get_transport(), progress4=_progress if process else None)
+            scp.put(local_file, remote_file, recursive)
+            return SCPResult(host.hostname, src=local_file, dst=remote_file, completed=True)
+        except Exception as ex:
+            return SCPResult(host.hostname, src=local_file, dst=remote_file, completed=False, exception=repr(ex))
+    
+    result = concurrent(_upload, [tuple([h]) for h in TARGET])
+
+    if outmode == "none":
+        return
+    elif outmode == "template":
+        template = Template(template, lstrip_blocks=True, trim_blocks=True)
+        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
+        for r in result:
+            click.echo(template.render(dataclasses.asdict(r)))
+    elif outmode == "json":
+        click.echo(marshmallow_dataclass.class_schema(
+            SSHResult)().dumps(result, many=True))
+    elif outmode == "yaml":
+        click.echo(yaml.dump(result, allow_unicode=True))
+
+
+pull_default_template = "{{dst}} <===== {{hostname}}:{{src}} {% if completed %} successfully! {% else %} faild! {% endif %}"
 
 @cli.command()
 @click.argument('remote_file', type=click.types.Path())
 @click.argument('local_file', type=click.types.Path())
-def pull(remote_file, local_file):
+@click.option('-r', '--recursive', default=True, type=bool)
+@click.option('-o', '--outmode', default="none", type=click.Choice(["none", "template", "json", "yaml"]))
+@click.option('-t', '--template', default=pull_default_template, type=str, required=False)
+@click.option('-n', '--naming-template', default="{{ remote_file_name }}-{{ hostname }}", type=str)
+@click.option('-p', '--process', default=False, type=bool)
+def pull(remote_file, local_file, outmode, template, recursive, naming_template, process):
     """
-    example:\n
-      pypssh -t 192.168.31.1 pull /etc/yum.conf /etc/yum.conf
+    download file
+    example:
+      pypssh -t 192.168.31.1 put /etc/yum.conf /etc/yum.conf
     """
-    pass
+    def _progress(filename, size, sent, peername):
+        click.echo("(%s:%s) %s's progress: %.2f%%   \r" % (
+            peername[0], peername[1], filename, float(sent)/float(size)*100))
+
+    def _download(host):
+        try:
+            ssh = get_ssh_conn_client(host)
+            scp = SCPClient(ssh.get_transport(), progress4=_progress if process else None)
+            if Path(local_file).is_dir():
+                render_local_file = Path(local_file).joinpath(Template(naming_template).render(
+                        {
+                            **dataclasses.asdict(host), 
+                            "local_file": local_file, 
+                            "remote_file": remote_file, 
+                            "remote_file_name": Path(remote_file).name, 
+                            "local_file_name": Path(local_file).name
+                        }))
+                scp.get(
+                    remote_file, 
+                    render_local_file, 
+                    recursive
+                    )
+            return SCPResult(host.hostname, src=remote_file, dst=render_local_file, completed=True)
+        except Exception as ex:
+            return SCPResult(host.hostname, src=remote_file, dst=local_file, completed=False, exception=repr(ex))
+
+    result = concurrent(_download, [tuple([h]) for h in TARGET])
+
+    if outmode == "none":
+        return
+    elif outmode == "template":
+        template = Template(template, lstrip_blocks=True, trim_blocks=True)
+        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
+        for r in result:
+            click.echo(template.render(dataclasses.asdict(r)))
+    elif outmode == "json":
+        click.echo(marshmallow_dataclass.class_schema(
+            SSHResult)().dumps(result, many=True))
+    elif outmode == "yaml":
+        click.echo(yaml.dump(result, allow_unicode=True))
 
 
 @cli.command()
 def ls():
+    """
+    list host
+    """
     click.echo(yaml.dump([i.hostname for i in TARGET], allow_unicode=True))
 
 
 @cli.command()
 def ping():
+    """
+    ping hosts
+    """
     def _connect_test(host: Host):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(host.timeout)
@@ -406,17 +582,20 @@ def ping():
                                for i in TARGET]) if i]
     s = concurrent(_ssh_test, [tuple([i]) for i in c if i])
 
-    working_host =  [i.hostname for i in s if i]
+    working_host = [i.hostname for i in s if i]
     non_working_host = [i.hostname for i in TARGET if i not in s]
-    working_host.sort(key=lambda key:int(key.replace(".","")))
-    non_working_host.sort(key=lambda key:int(key.replace(".","")))
-    result = {'working_host': working_host, 'non_working_host':non_working_host}
+    working_host.sort(key=lambda key: int(key.replace(".", "")))
+    non_working_host.sort(key=lambda key: int(key.replace(".", "")))
+    result = {'working_host': working_host,
+              'non_working_host': non_working_host}
     click.echo(yaml.dump(result, allow_unicode=True))
 
-    
 
 @cli.command()
 def version():
+    """
+    print version
+    """
     addr = "https://github.com/witchc/pypssh"
     vno = "v0.2.0"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
@@ -433,5 +612,3 @@ def version():
 
 if __name__ == '__main__':
     cli()
-    # print(concurrent(realtime_output, [(Host(hostname="",username="",password="",sudo=True),"sudo tail -f /all.log"),(Host(hostname="",username=",password=",sudo=True),"sudo tail -f all.log")]))
-    # pprint.pprint(load_hosts("config/inventory.yaml"))

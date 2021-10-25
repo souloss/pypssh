@@ -78,14 +78,21 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 ## pypssh 开发者指南
 ### 基本介绍和约定
 该项目主要基于以下依赖：  
-- paramiko: 提供 ssh 客户端支持；
+- concurrent(python3自带): 为子命令提供并发支持；
+- paramiko/scp: 提供 ssh/scp 客户端支持；
+- jinja2: 提供输出命令结果时的模版渲染支持；
+- yaml: 提供输出命令结果时的 yaml 格式支持；
+- marshmallow_dataclass: 提供对数据类转dict的支持;
 - click: 提供 cli 支持；
 - PyYAML: 提供 yaml 配置文件解析支持；
 - PyInstaller: 提供二进制程序发布支持； 
-- concurrent(python3自带): 为子命令提供并发支持；
 
 约定：
-- 它默认使用 `~/.pypssh/` 作为数据目录存放自己的数据和配置文件。
+- import 语句按照以下规范编写：
+  - 内置包排在依赖包前面
+  - 包名短的排在长的前面
+  - import ... 排在 from ... import 前面
+- 默认使用 `~/.pypssh/` 作为数据目录存放自己的数据和配置文件。
 - 所有子命令的输出暂时都使用 `click.echo(yaml.dump({{result}}, allow_unicode=True))` 的形式，这样既能保证人类可读也便于其它程序调用和解析，之后再使用模板封装输出函数。
 - 任务函数中使用 `get_ssh_logger(host)` 获取日志实例，这样能在每条日志头部打印主机名。
 
