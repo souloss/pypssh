@@ -4,25 +4,21 @@ import re
 import os
 import sys
 import ast
-import glob
 import time
-import json
 import socket
-import pprint
+import copy
 import select
 import logging
 import platform
-import textwrap
 import itertools
 import functools
 import dataclasses
 
-from enum import Enum
 from pathlib import Path
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures._base import as_completed
-from typing import Union, Optional, List, Callable, Dict
+from typing import Optional, List, Callable, Dict
 
 import yaml
 import click
@@ -199,30 +195,33 @@ def expand_slice(slices: list) -> list:
         slice_tuples.append((s, slice_list))
     return slice_tuples
 
-
-def load_hosts(config_path: str) -> Dict[str, Host]:
+def render_hosts(rd:Dict) -> Dict[str, Host]:
     result = {}
-    with open(config_path) as file:
-        hosts = yaml.load(file, Loader=Loader)
-        for key in hosts.keys():
-            find_slice = re.findall(SLICE_NON_GROUP_PATTERN, key)
-            if find_slice:
-                slice_tuples = expand_slice(find_slice)
-                combilist = [i for i in itertools.product(
-                    *[i[1] for i in slice_tuples])]
-                for comitem in combilist:
-                    host = key
-                    for index, slice_key in enumerate([i[0] for i in slice_tuples]):
-                        host = host.replace(slice_key, str(comitem[index]), 1)
-                    result[host] = marshmallow_dataclass.class_schema(
-                        Host)().load(hosts[key])
-                    result[host].hostname = host
-            else:
-                result[key] = marshmallow_dataclass.class_schema(
-                    Host)().load(hosts[key])
-                result[key].hostname = key
+    for key in rd.keys():
+        find_slice = re.findall(SLICE_NON_GROUP_PATTERN, rd[key].get('hostname'))
+        if find_slice:
+            slice_tuples = expand_slice(find_slice)
+            combilist = [i for i in itertools.product(
+                *[i[1] for i in slice_tuples])]
+            for comitem in combilist:
+                host = rd[key].get('hostname')
+                for index, slice_key in enumerate([i[0] for i in slice_tuples]):
+                    host = host.replace(slice_key, str(comitem[index]), 1)
+                result[f"{key}-{host}"] = marshmallow_dataclass.class_schema(
+                    Host)().load(rd[key])
+                result[f"{key}-{host}"].hostname = host
+        else:
+            result[key] = marshmallow_dataclass.class_schema(
+                Host)().load(rd[key])
     return result
 
+# inventory plugins
+def fillinghostname_fromkey(rd:Dict):
+    result = copy.deepcopy(rd)
+    for key in result.keys():
+        if not result[key].get('hostname'):
+            result[key]['hostname'] = key
+    return result
 # execute utils
 
 
@@ -310,12 +309,14 @@ def get_target(hosts: Dict[str, Host], name):
 
 
 @click.group()
-@click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=str, required=False, help="inventory.yaml path")
+@click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=click.types.Path(), required=False, help="inventory.yaml path")
 @click.option('-l', '--log-level', default='INFO', type=click.Choice(["NOTSET", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]), required=False)
 @click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
-@click.pass_context
-def cli(ctx, inventory, log_level, target):
-    hosts = load_hosts(inventory)
+def cli(inventory, log_level, target):
+    with open(inventory) as file:
+        hosts_dict = yaml.load(file, Loader=Loader)
+    hosts_dict = fillinghostname_fromkey(hosts_dict)
+    hosts = render_hosts(hosts_dict)
     ssh_logger.setLevel(log_level)
     global TARGET
     if target:
