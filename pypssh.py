@@ -88,56 +88,65 @@ class Evaluator(ast.NodeTransformer):
 
     def visit_UnaryOp(self, node):
         self.generic_visit(node)
-        if isinstance(node.operand, ast.Name):
-            unaryop = {
+        # print(ast.dump(node))
+        unaryop = {
                 ast.Not: lambda a: not a
             }.get(node.op.__class__)
-            return unaryop(node.operand.id in self.data.keys())
+        if isinstance(node.operand, ast.Name):
+            return ast.Expr(unaryop(node.operand.id in self.data.keys()))
         else:
-            raise NotImplementedError(
-                f"row {node.lineno} col {node.col_offset} error, {type(node.operand).__name__} is an unsupported operation!")
+            return ast.Expr(unaryop(node.operand))
+
 
     def visit_Compare(self, node):
         self.generic_visit(node)
-        if isinstance(node.left, ast.Name):
-            result = False
-            lval = self.data.get(node.left.id)
-            for op, rnode in zip(node.ops, node.comparators):
-                cmpop = {
-                    ast.Eq: lambda a, b: a == b,
-                    ast.In: lambda a, b: a in b,
-                    ast.Is: lambda a, b: a is b,
-                    ast.IsNot: lambda a, b: a is not b,
-                    ast.NotEq: lambda a, b: a != b,
-                    ast.NotIn: lambda a, b: a not in b,
-                }.get(op.__class__)
-                rval = rnode.id
-                if cmpop:
-                    result = cmpop(lval, rval)
-                    lval = rval
-                else:
-                    raise NotImplementedError(
-                        f"row {node.lineno} col {node.col_offset} error, {type(op).__name__} is an unsupported operation!")
-            return ast.Constant(value=result)
-        else:
-            raise NotImplementedError(
-                f"row {node.lineno} col {node.col_offset} error, {type(node.left).__name__} is an unsupported operation!")
+        # print(ast.dump(node))
+        result = False
+        lval = self.data.get(node.left.id) if hasattr(node.left,'id') else node.left.value
+        for op, rnode in zip(node.ops, node.comparators):
+            cmpop = {
+                ast.Eq: lambda a, b: a == b,
+                ast.In: lambda a, b: a in b,
+                ast.Is: lambda a, b: a is b,
+                ast.IsNot: lambda a, b: a is not b,
+                ast.NotEq: lambda a, b: a != b,
+                ast.NotIn: lambda a, b: a not in b,
+            }.get(op.__class__)
+            rval = rnode.id if hasattr(rnode,'id') else rnode.value
+            if cmpop:
+                result = cmpop(lval, rval)
+                lval = rval
+            else:
+                raise NotImplementedError(
+                    f"row {node.lineno} col {node.col_offset} error, {type(op).__name__} is an unsupported operation!")
+        return ast.Expr(result)
 
     def visit_BoolOp(self, node):
         self.generic_visit(node)
+        # print(f"boolop: {ast.dump(node)}")
         boolop = {
             ast.And: lambda a, b: a and b,
             ast.Or: lambda a, b: a or b,
         }.get(node.op.__class__)
-        return functools.reduce(boolop, [i for i in map(lambda v:v.value, node.values)])
+        return ast.Expr(functools.reduce(boolop, [i for i in map(lambda v:v.value if hasattr(v,'value') else v , node.values)]))
+
+    def visit_Expr(self, node):
+        self.generic_visit(node)
+        # print(f"expr: {ast.dump(node)}")
+        if isinstance(node.value, ast.Expr):
+            return self.visit_Expr(node.value)
+        elif isinstance(node.value, ast.Name):
+            exist = node.value.id in self.data.keys()
+            # print(exist, node.value.id, self.data.keys())
+            return ast.Expr(exist)
+        else:
+            return ast.Expr(node.value)
 
     def eval(self, expr: str):
         tree = ast.parse(expr)
         tree = ast.fix_missing_locations(self.visit(tree))
-        if len(tree.body) == 1:
-            return tree.body[0].value
-        else:
-            raise AssertionError(f"{tree.body} eval exception!")
+        # print(f"result: {ast.dump(tree)}")
+        return tree.body[0].value
 
 
 def get_ssh_logger(host: Host):
