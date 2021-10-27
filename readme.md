@@ -86,6 +86,10 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 - click: 提供 cli 支持；
 - PyYAML: 提供 yaml 配置文件解析支持；
 - PyInstaller: 提供二进制程序发布支持； 
+开发时依赖如下：
+- altgraph: alt 模块调试
+- autopep8: 代码格式化
+- PyInstaller：二进制打包
 
 约定：
 - import 语句按照以下规范编写：
