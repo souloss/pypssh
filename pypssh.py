@@ -13,6 +13,7 @@ import platform
 import itertools
 import functools
 import dataclasses
+import encodings.idna
 
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -204,21 +205,29 @@ def expand_slice(slices: list) -> list:
         slice_tuples.append((s, slice_list))
     return slice_tuples
 
+def expand_hostname_slice(hostname:str) -> List[str]:
+    find_slice = re.findall(SLICE_NON_GROUP_PATTERN, hostname)
+    result = []
+    if find_slice:
+        slice_tuples = expand_slice(find_slice)
+        combilist = [i for i in itertools.product(
+                *[i[1] for i in slice_tuples])]
+        for comitem in combilist:
+            host = hostname
+            for index, slice_key in enumerate([i[0] for i in slice_tuples]):
+                host = host.replace(slice_key, str(comitem[index]), 1)
+            result.append(host)
+    return result
+
 def render_hosts(rd:Dict) -> Dict[str, Host]:
     result = {}
     for key in rd.keys():
-        find_slice = re.findall(SLICE_NON_GROUP_PATTERN, rd[key].get('hostname'))
-        if find_slice:
-            slice_tuples = expand_slice(find_slice)
-            combilist = [i for i in itertools.product(
-                *[i[1] for i in slice_tuples])]
-            for comitem in combilist:
-                host = rd[key].get('hostname')
-                for index, slice_key in enumerate([i[0] for i in slice_tuples]):
-                    host = host.replace(slice_key, str(comitem[index]), 1)
-                result[f"{key}-{host}"] = marshmallow_dataclass.class_schema(
-                    Host)().load(rd[key])
-                result[f"{key}-{host}"].hostname = host
+        hostnames = expand_hostname_slice(rd[key].get('hostname'))
+        if hostnames:
+            for hostname in hostnames:
+                result[f"{key}-{hostname}"] = marshmallow_dataclass.class_schema(
+                        Host)().load(rd[key])
+                result[f"{key}-{hostname}"].hostname = hostname
         else:
             result[key] = marshmallow_dataclass.class_schema(
                 Host)().load(rd[key])
@@ -303,8 +312,17 @@ def concurrent(func: Callable, tasks: list):
 
 def get_target(hosts: Dict[str, Host], name):
     result = []
+    # session name
     if name in hosts.keys():
         result.append(hosts[name])
+    # host name
+    elif name in [ host.hostname for key, host in hosts.items() ]:
+        result.extend(list(fliter(lambda i:i.hostname==name, hosts)))
+    # slice
+    elif re.findall(SLICE_NON_GROUP_PATTERN, name):
+        hostnames = expand_hostname_slice(name)
+        result.extend(list(filter(lambda host:host.hostname in hostnames, hosts.values())))
+    # tags
     else:
         for host in hosts.values():
             try:
@@ -322,8 +340,11 @@ def get_target(hosts: Dict[str, Host], name):
 @click.option('-l', '--log-level', default='INFO', type=click.Choice(["NOTSET", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]), required=False)
 @click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
 def cli(inventory, log_level, target):
-    with open(inventory) as file:
-        hosts_dict = yaml.load(file, Loader=Loader)
+    if Path(inventory).exists():
+        with open(inventory) as file:
+            hosts_dict = yaml.load(file, Loader=Loader)
+    else:
+        hosts_dict = {}
     hosts_dict = fillinghostname_fromkey(hosts_dict)
     hosts = render_hosts(hosts_dict)
     ssh_logger.setLevel(log_level)
@@ -607,7 +628,7 @@ def version():
     print version
     """
     addr = "https://github.com/witchc/pypssh"
-    vno = "v0.2.0"
+    vno = "v0.2.1"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     print(
         "\n".join
