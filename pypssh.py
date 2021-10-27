@@ -322,8 +322,11 @@ def get_target(hosts: Dict[str, Host], name):
 @click.option('-l', '--log-level', default='INFO', type=click.Choice(["NOTSET", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]), required=False)
 @click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
 def cli(inventory, log_level, target):
-    with open(inventory) as file:
-        hosts_dict = yaml.load(file, Loader=Loader)
+    if Path(inventory).exists():
+        with open(inventory) as file:
+            hosts_dict = yaml.load(file, Loader=Loader)
+    else:
+        hosts_dict = {}
     hosts_dict = fillinghostname_fromkey(hosts_dict)
     hosts = render_hosts(hosts_dict)
     ssh_logger.setLevel(log_level)
