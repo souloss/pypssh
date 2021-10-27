@@ -419,6 +419,9 @@ def execute(command, needpty, sudo, outmode, template):
     """
     execute command
     """
+    if sudo:
+        for i in TARGET:
+            i.sudo = sudo
     result = []
     if needpty:
         result = concurrent(
@@ -468,10 +471,10 @@ def execfile(ctx, script_file, script_arg, env, attachment, workdir, needpty, su
         script_env = ''.join(["export %s && " % item for item in env])
         script_arg_str = ' '.join(script_arg)
         command = f"{script_env} cd {workdir} && chmod +x {remote_file} && {remote_file} {script_arg_str}"
-        ctx.invoke(execute, command=command, outmode=outmode, template=template)
+        ctx.invoke(execute, command=command, outmode=outmode, template=template, sudo=sudo)
     finally:
         command = f"rm -rf {' '.join(put_files)}"
-        ctx.invoke(execute, command=command, outmode=outmode, template=template)
+        ctx.invoke(execute, command=command, outmode=outmode, template=template, sudo=sudo)
 
 put_default_template = "{{src}} =====> {{hostname}}:{{dst}} {% if completed %} successfully! {% else %} faild! {% endif %}"
 
