@@ -7,13 +7,15 @@
 ### 关于基本使用
 ```bash
 # 选择特定主机执行命令
-pypssh 192.168.1.100 execute -e NAME=peter 'echo hello $NAME'
+pypssh -t 192.168.1.100 execute -e NAME=peter 'echo hello $NAME'
+# 根据主机切片表达式选择配置中存在的主机
+pypssh -t 192.168.3[2:90].10[5:9] ls
 # 根据标签选择特定主机上传文件
-pypssh master put [localfile] [remotefile]
+pypssh -t master put [localfile] [remotefile]
 # 根据简单的标签表达式获取文件
-pypssh mysql==master get [remotefile] [localdir]
+pypssh -t mysql==master get [remotefile] [localdir]
 # 根据复杂的标签表达式执行脚本
-pypssh ds01&&(redis==master||mysql==master) execfile test.py
+pypssh -t 'ds01 and (redis==master or mysql)' execfile test.py
 ```
 
 但对于中大规模的主机数量而言，没有配置文件不便于管理，所以 `pypssh` 提供配置的方式建立会话进行操作。配置文件为了便于解析和扩展我们采用了数据类对象转储的形式进行存储，数据类对象可以转储为 `json`，`yaml` 等格式。配置文件内容示例如下：
@@ -22,19 +24,17 @@ pypssh ds01&&(redis==master||mysql==master) execfile test.py
 192.168.31.133:
   port: 22
   username: mysql
-  # echo -n 'mysql$123' | base64
-  # echo -n 'bXlzcWwkMTIz' | base64 -d
   password: bXlzcWwkMTIz
   tags:
     mysql: master
-192.168.31.134:
+# 192.168.31.135 ~ 192.168.31.138
+192.168.31.13[5:9]:
   port: 22
   username: mysql
-  # echo -n 'mysql$123' | base64
-  # echo -n 'bXlzcWwkMTIz' | base64 -d
   password: bXlzcWwkMTIz
   tags:
     mysql: master
+# 192.(22~25).(95~98).(95~98)
 192.[22:26].[95:99].[95:99]:
   port: 22
   username: mysql
@@ -65,6 +65,7 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 ```
 
 
+
 ### 关于能力
 `pypssh` 提供以下子命令：
 - config：提供配置的命令行接口
@@ -86,6 +87,10 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 - click: 提供 cli 支持；
 - PyYAML: 提供 yaml 配置文件解析支持；
 - PyInstaller: 提供二进制程序发布支持； 
+开发时依赖如下：
+- altgraph: alt 模块调试
+- autopep8: 代码格式化
+- PyInstaller：二进制打包
 
 约定：
 - import 语句按照以下规范编写：
