@@ -29,6 +29,7 @@ import marshmallow_dataclass
 from yaml import Loader
 from scp import SCPClient
 from jinja2 import Template
+from tenacity import retry, stop_after_attempt, after_log
 
 ssh_formatter = logging.Formatter(
     fmt=f'%(asctime)s [%(hostname)s][%(levelname)s] %(message)s')
@@ -41,10 +42,16 @@ ssh_logger.setLevel(logging.INFO)
 ssh_logger.removeHandler(ssh_logger.handlers)
 ssh_logger.addHandler(ssh_streamHandler)
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.removeHandler(logger.handlers)
+logger.addHandler(logging.StreamHandler())
+
 MAIN_DIR = os.path.join(os.path.expanduser('~'), ".pypssh")
 SLICE_PATTERN = "\[(\w*):(\w*)\]"
 SLICE_NON_GROUP_PATTERN = "\[\w*:\w*\]"
 BANNER_TIMEOUT = 300
+RETRY_COUNT = 2
 TARGET = []
 
 
@@ -282,32 +289,42 @@ def realtime_output(host: Host, command: str):
                 if re.search('\[sudo\] ', stdout.decode()):
                     channel.send(host.password+'\n')
                 time.sleep(1)
-        while True:
-            time.sleep(0.001)
+        read_complate = False
+        while not channel.exit_status_ready() or not read_complate:
             rl, _, _ = select.select([channel], [], [], 0.0)
             if len(rl) > 0:
                 for line in linesplit(channel):
                     lines.append(line)
                     get_ssh_logger(host).info(line)
-            if channel.exit_status_ready():
-                returncode = channel.recv_exit_status()
-                break
-        # returncode = channel.recv_exit_status()
+                read_complate = True
+        returncode = channel.recv_exit_status()
     except Exception as ex:
         return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode, exception=repr(ex))
     finally:
         client.close()
     return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode)
 
+def retry_logger(retry_state):
+    rlog = logger
+    exception = retry_state.outcome.exception()
+    for arg in retry_state.args:
+        if isinstance(arg, Host):
+            rlog = get_ssh_logger(arg)
+    rlog.warning(f"{exception} retry {retry_state.attempt_number}/{RETRY_COUNT}.")
 
 def concurrent(func: Callable, tasks: list):
+    tarfunc = retry(
+            stop=stop_after_attempt(RETRY_COUNT), 
+            after=retry_logger,
+            retry_error_callback=lambda retry_state: None
+        )(func)
     if not tasks and len(tasks) <= 0:
         return []
     with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
         future_list = list()
         result_list = list()
         for task in tasks:
-            future_list.append(executor.submit(func, *task))
+            future_list.append(executor.submit(tarfunc, *task))
         for future in as_completed(future_list):
             result_list.append(future.result())
         return result_list
@@ -639,7 +656,7 @@ def version():
     print version
     """
     addr = "https://github.com/witchc/pypssh"
-    vno = "v0.2.1"
+    vno = "v0.2.2"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     print(
         "\n".join
