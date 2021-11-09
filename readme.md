@@ -110,4 +110,6 @@ pypssh config merge ds1.yaml ds2.yaml >> ds3.yaml
 #### 优化
 
 ### 开发者参考
-[click文档](https://click.palletsprojects.com/en/7.x/)
+[ssh-protocol - SSH.COM](https://www.ssh.com/academy/ssh/protocol)
+[tenacity document](https://tenacity.readthedocs.io/en/latest/index.html)
+[click document](https://click.palletsprojects.com/en/7.x/)
