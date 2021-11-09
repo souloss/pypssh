@@ -161,10 +161,13 @@ def get_ssh_conn_client(host: Host):
     client.connect(
         hostname=host.hostname,
         username=host.username,
+        port=host.port,
         password=host.password,
         passphrase=host.pkpasswd,
         timeout=host.timeout,
         banner_timeout=BANNER_TIMEOUT,
+        # 需要能全局控制是否使用 agent
+        # allow_agent=False,
         key_filename=host.pkfile if host.pkfile else None
     )
     return client
@@ -587,7 +590,8 @@ def ls():
 
 
 @cli.command()
-def ping():
+@click.option('--noicmp', type=bool, required=False, flag_value=False)
+def ping(noicmp):
     """
     ping hosts
     """
@@ -612,8 +616,12 @@ def ping():
             return None
         return host
 
-    c = [i for i in concurrent(_connect_test, [tuple([i])
+    if not noicmp:
+        c = [ i for i in concurrent(_connect_test, [tuple([i])
                                for i in TARGET]) if i]
+    else:
+        c = TARGET
+
     s = concurrent(_ssh_test, [tuple([i]) for i in c if i])
 
     working_host = [i.hostname for i in s if i]
