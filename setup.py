@@ -4,12 +4,12 @@ from setuptools import setup, find_packages, find_namespace_packages
 
 setup(
       name='pypssh',
-      version='0.2.0',
+      version='0.2.2',
       description='pypssh',
       author='pypssh developers',
-      maintainer='闻海钧',
-      author_email='826245622@qq.com',
-      url='https://github.com/Snile826/pypssh',
+      maintainer='witchc',
+      author_email='lebowitzgerald407@gmail.com',
+      url='https://github.com/witchc/pypssh',
       license='MIT',
       # 要打包的项目文件夹
     #   packages = find_packages("."),
@@ -22,8 +22,10 @@ setup(
       install_requires = [
         "paramiko",
         "PyYAML",
-        "PyInstaller",
-        "click"
+        "click",
+        "Jinja2",
+        "marshmallow-dataclass",
+        "tenacity"
       ],
     # 设置程序的入口
     # 安装后，命令行执行 `key` 相当于调用 `value`: 中的 :`value` 方法
