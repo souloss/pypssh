@@ -50,6 +50,11 @@ logger.addHandler(logging.StreamHandler())
 MAIN_DIR = os.path.join(os.path.expanduser('~'), ".pypssh")
 SLICE_PATTERN = "\[(\w*):(\w*)\]"
 SLICE_NON_GROUP_PATTERN = "\[\w*:\w*\]"
+
+SLICE_SPLIT_PATTERN = "\[((\w*):(\w*)|\w*)(,((\w*):(\w*)|\w*))*\]"
+SLICE_NON_GROUP_PATTERN = "\[(?:(?:\w*):(?:\w*)|\w*)(?:,(?:(?:\w*):(?:\w*)|\w*))*\]"
+
+
 BANNER_TIMEOUT = 300
 RETRY_COUNT = 2
 TARGET = []
@@ -199,19 +204,21 @@ def is_letter_slice(s: str):
     except Exception:
         return False
 
-
 def expand_slice(slices: list) -> list:
     slice_tuples = []
     for s in slices:
         slice_list = []
-        if is_digest_slice(s):
-            s0, s1 = re.match(SLICE_PATTERN, s).groups()
-            slice_list = list(range(int(s0), int(s1)))
-        elif is_letter_slice(s):
-            s0, s1 = re.match(SLICE_PATTERN, s).groups()
-            slice_list = [chr(i) for i in range(ord(s0), ord(s1))]
-        else:
-            raise AssertionError("slice error " + s)
+        s_list = s[1:-1].split(",")
+        for s_item in s_list:
+            s_item_slice = f"[{s_item}]"
+            if is_digest_slice(s_item_slice):
+                s0, s1 = re.match(SLICE_PATTERN, s_item_slice).groups()
+                slice_list.extend(list(range(int(s0), int(s1))))
+            elif is_letter_slice(s_item_slice):
+                s0, s1 = re.match(SLICE_PATTERN, s_item_slice).groups()
+                slice_list.extend([chr(i) for i in range(ord(s0), ord(s1))])
+            else:
+                slice_list.append(s_item)
         slice_tuples.append((s, slice_list))
     return slice_tuples
 
@@ -337,7 +344,7 @@ def get_target(hosts: Dict[str, Host], name):
         result.append(hosts[name])
     # host name
     elif name in [ host.hostname for key, host in hosts.items() ]:
-        result.extend(list(fliter(lambda i:i.hostname==name, hosts)))
+        result.extend(list(filter(lambda i:i.hostname==name, hosts)))
     # slice
     elif re.findall(SLICE_NON_GROUP_PATTERN, name):
         hostnames = expand_hostname_slice(name)
