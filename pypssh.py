@@ -59,6 +59,10 @@ BANNER_TIMEOUT = 300
 RETRY_COUNT = 2
 TARGET = []
 
+class SSHException(Exception):
+    def __init__(self, status):
+        super().__init__(status)
+        self.status = status
 
 @dataclass
 class Host:
@@ -74,7 +78,6 @@ class Host:
     sudo: bool = False
     timeout: int = 5
     tags: Dict[str, str] = field(default_factory=dict)
-
 
 @dataclass
 class SSHResult:
@@ -279,9 +282,11 @@ def linesplit(socket):
 
 
 def realtime_output(host: Host, command: str):
-    client = get_ssh_conn_client(host)
-    returncode = 0
+    client = None
     try:
+        lines = []
+        returncode = 0
+        client = get_ssh_conn_client(host)
         transport = client.get_transport()
         channel = transport.open_session()
         # 必须获取 pty 才能有机会输入 sudo
@@ -289,7 +294,6 @@ def realtime_output(host: Host, command: str):
         # 若是非阻塞则强制 recv 时会造成错误
         # channel.setblocking(0)
         channel.exec_command(command)
-        lines = []
         if host.sudo:
             while channel.recv_ready() == False:
                 stdout = channel.recv(4096)
@@ -306,10 +310,11 @@ def realtime_output(host: Host, command: str):
                 read_complate = True
         returncode = channel.recv_exit_status()
     except Exception as ex:
-        return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode, exception=repr(ex))
+        raise SSHException(SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines) if lines else "", returncode=returncode, exception=repr(ex)))
     finally:
-        client.close()
-    return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines), returncode=returncode)
+        if client:
+            client.close()
+    return SSHResult(hostname=host.hostname, command=command, stdout="\n".join(lines) if lines else "", returncode=returncode)
 
 def retry_logger(retry_state):
     rlog = logger
@@ -323,7 +328,7 @@ def concurrent(func: Callable, tasks: list):
     tarfunc = retry(
             stop=stop_after_attempt(RETRY_COUNT), 
             after=retry_logger,
-            retry_error_callback=lambda retry_state: None
+            retry_error_callback=lambda retry_state: retry_state.outcome.exception().status if isinstance(retry_state.outcome.exception(), SSHException) else Result(hostname=None, exception=retry_state.outcome.exception())
         )(func)
     if not tasks and len(tasks) <= 0:
         return []
@@ -356,7 +361,7 @@ def get_target(hosts: Dict[str, Host], name):
                 if Evaluator(host.tags).eval(name):
                     result.append(host)
             except Exception as ex:
-                get_ssh_logger(host.hostname).warn(ex)
+                get_ssh_logger(host).debug(ex)
     return result
 
 # root cmd
@@ -503,7 +508,16 @@ def execfile(ctx, script_file, script_arg, env, attachment, workdir, needpty, su
         command = f"rm -rf {' '.join(put_files)}"
         ctx.invoke(execute, command=command, outmode=outmode, template=template, sudo=sudo)
 
-put_default_template = "{{src}} =====> {{hostname}}:{{dst}} {% if completed %} successfully! {% else %} faild! {% endif %}"
+# put_default_template = "localhost:{{src}} =====> {{hostname}}:{{dst}} {% if completed %}successfully!{% else %} faild! because {{exception}} {% endif %}"
+put_default_template = """
+========== {{ hostname }} ==========
+src: {{src}}
+dst: {{dst}}
+state: {% if completed %} successfully! {% else %} faild! {% endif %}  
+{% if exception %}
+exception: {{ exception }}
+{% endif %}
+"""
 
 @cli.command()
 @click.argument('local_file', type=click.types.Path(exists=True))
@@ -527,9 +541,11 @@ def put(local_file, remote_file, outmode, template, recursive, process):
             ssh = get_ssh_conn_client(host)
             scp = SCPClient(ssh.get_transport(), progress4=_progress if process else None)
             scp.put(local_file, remote_file, recursive)
+            get_ssh_logger(host).info(f"file localhost:{local_file} => {host.hostname}:{remote_file} successfully!")
             return SCPResult(host.hostname, src=local_file, dst=remote_file, completed=True)
         except Exception as ex:
-            return SCPResult(host.hostname, src=local_file, dst=remote_file, completed=False, exception=repr(ex))
+            # get_ssh_logger(host).error(f"file localhost:{local_file} => {host.hostname}:{remote_file} faild! because {ex}")
+            raise SSHException(SCPResult(host.hostname, src=local_file, dst=remote_file, completed=False, exception=repr(ex)))
     
     result = concurrent(_upload, [tuple([h]) for h in TARGET])
 
@@ -547,8 +563,16 @@ def put(local_file, remote_file, outmode, template, recursive, process):
         click.echo(yaml.dump(result, allow_unicode=True))
 
 
-pull_default_template = "{{dst}} <===== {{hostname}}:{{src}} {% if completed %} successfully! {% else %} faild! {% endif %}"
-
+# pull_default_template = "localhost:{{dst}} <===== {{hostname}}:{{src}} {% if completed %}successfully!{% else %} faild! because {{exception}} {% endif %}"
+pull_default_template = """
+========== {{ hostname }} ==========
+src: {{src}}
+dst: {{dst}}
+state: {% if completed %} successfully! {% else %} faild! {% endif %}  
+{% if exception %}
+exception: {{ exception }}
+{% endif %}
+"""
 @cli.command()
 @click.argument('remote_file', type=click.types.Path())
 @click.argument('local_file', type=click.types.Path())
@@ -585,9 +609,11 @@ def pull(remote_file, local_file, outmode, template, recursive, naming_template,
                     render_local_file, 
                     recursive
                     )
+            get_ssh_logger(host).info(f"file localhost:{render_local_file} <= {host.hostname}:{remote_file} successfully!")
             return SCPResult(host.hostname, src=remote_file, dst=render_local_file, completed=True)
         except Exception as ex:
-            return SCPResult(host.hostname, src=remote_file, dst=local_file, completed=False, exception=repr(ex))
+            # get_ssh_logger(host).error(f"file localhost:{render_local_file} <= {host.hostname}:{remote_file} faild! because {ex}")
+            raise SSHException(SCPResult(host.hostname, src=remote_file, dst=local_file, completed=False, exception=repr(ex)))
 
     result = concurrent(_download, [tuple([h]) for h in TARGET])
 
