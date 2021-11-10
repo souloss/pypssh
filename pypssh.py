@@ -344,7 +344,7 @@ def get_target(hosts: Dict[str, Host], name):
         result.append(hosts[name])
     # host name
     elif name in [ host.hostname for key, host in hosts.items() ]:
-        result.extend(list(filter(lambda i:i.hostname==name, hosts)))
+        result.extend(list(filter(lambda i: i.hostname==name, hosts.values())))
     # slice
     elif re.findall(SLICE_NON_GROUP_PATTERN, name):
         hostnames = expand_hostname_slice(name)
