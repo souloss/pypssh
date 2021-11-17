@@ -408,6 +408,68 @@ def dump_default():
         f.write(default_config)
     click.echo(f'default config write {Path(MAIN_DIR).joinpath("inventory").joinpath("inventory.yaml")} successfully!')
 
+def convert_config_for_010(config_file):
+
+    import configparser
+    IS_VARS = re.compile("((\w+):)?vars", re.I)
+    configparserobj = configparser.ConfigParser(allow_no_value=True, delimiters=("="),strict=False)
+
+    configparserobj.read(config_file)
+    configparserobj.setdefault('vars',dict())
+    configparserobj.setdefault('all',dict())
+
+    # 获取所有主机组和值
+    _host_groups = {key: dict(value) for key, value in configparserobj.items() if not re.match(IS_VARS, key)}
+    # 获取所有主机组,设置值为空字典
+    host_groups = {key: dict() for key in _host_groups.keys()}
+    # 获取所有变量组
+    vars_groups = {key: dict(value) for key, value in configparserobj.items() if re.match(IS_VARS, key)}
+
+    # 处理主机组
+    for item_group in _host_groups:
+        for host_str in list(_host_groups[item_group]):
+            _host = host_str.split(':')
+            host = _host[0]
+
+            # 将组变量合并到组主机
+            host_groups[item_group][host] = dict()
+            host_groups[item_group][host].update(vars_groups.get('vars', dict()))
+            host_groups[item_group][host].update(vars_groups.get(item_group + ':vars', dict()))
+
+            # 将内联变量合并到组主机
+            if len(_host) > 1 and _host[1]:
+                host_groups[item_group][host]['port'] = int(_host[1])
+            if len(_host) > 2 and _host[2]:
+                host_groups[item_group][host]['username'] = _host[2]
+            if len(_host) > 3 and _host[3]:
+                host_groups[item_group][host]['password'] = _host[3]
+
+        # 将该组主机合并到 all 组中
+        host_groups['all'].update(host_groups[item_group])
+    
+    # 转换为最新版本配置
+    hosts = {}
+    for tag, values in host_groups.items():
+        for host, properties in values.items():
+            hosts[f"{host}_{properties['username']}"] = dataclasses.asdict(Host(hostname=host, **properties, tags={tag:""}))
+    print(yaml.dump(hosts, allow_unicode=True))
+
+
+@config.command()
+@click.option('-v', '--version', type=str, required=False, help="Config Parser Version.",default="0.1.0")
+@click.argument('config_file', nargs=1, type=click.types.Path(), required=True)
+def convert(version, config_file):
+    """
+    Load the old version of the config and convert to the current version of the config
+    """
+    if not Path(config_file).is_file():
+        logger.warning("%s 不是有效的配置文件" % config_file)
+
+    if version == "0.1.0":
+        convert_config_for_010(config_file)
+    else:
+        logger.error("unsupported version!")
+
 
 # @config.command()
 # def add_host():
