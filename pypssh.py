@@ -162,7 +162,10 @@ class Evaluator(ast.NodeTransformer):
         tree = ast.parse(expr)
         tree = ast.fix_missing_locations(self.visit(tree))
         # print(f"result: {ast.dump(tree)}")
-        return tree.body[0].value
+        if isinstance(tree.body[0].value, bool):
+            return tree.body[0].value
+        else:
+            raise NotImplemented(tree)
 
 
 def get_ssh_logger(host: Host):
@@ -341,6 +344,20 @@ def concurrent(func: Callable, tasks: list):
             result_list.append(future.result())
         return result_list
 
+def echo(output_mode:str, cls, datas, template):
+    if output_mode == "none":
+        return
+    elif output_mode == "template":
+        template = Template(template, lstrip_blocks=True, trim_blocks=True)
+        datas.sort(key=lambda k: int(k.hostname.replace(".", "")))
+        for r in datas:
+            click.echo(template.render(dataclasses.asdict(r)))
+    elif output_mode == "json":
+        click.echo(marshmallow_dataclass.class_schema(
+            cls)().dumps(datas, many=True))
+    elif output_mode == "yaml":
+        datas = [ dataclasses.asdict(item) for item in datas ]
+        click.echo(yaml.dump(datas, allow_unicode=True))
 
 def get_target(hosts: Dict[str, Host], name):
     result = []
@@ -460,18 +477,7 @@ def execute(command, needpty, sudo, outmode, template):
             realtime_output, [tuple([h, command]) for h in TARGET])
     else:
         raise NotImplementedError("not impl nonpty command!")
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    echo(outmode, SSHResult, result, template)
 
 
 @cli.command()
@@ -548,19 +554,7 @@ def put(local_file, remote_file, outmode, template, recursive, process):
             raise SSHException(SCPResult(host.hostname, src=local_file, dst=remote_file, completed=False, exception=repr(ex)))
     
     result = concurrent(_upload, [tuple([h]) for h in TARGET])
-
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    echo(outmode, SSHResult, result, template)
 
 
 # pull_default_template = "localhost:{{dst}} <===== {{hostname}}:{{src}} {% if completed %}successfully!{% else %} faild! because {{exception}} {% endif %}"
@@ -616,19 +610,8 @@ def pull(remote_file, local_file, outmode, template, recursive, naming_template,
             raise SSHException(SCPResult(host.hostname, src=remote_file, dst=local_file, completed=False, exception=repr(ex)))
 
     result = concurrent(_download, [tuple([h]) for h in TARGET])
-
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    
+    echo(outmode, SSHResult, result, template)
 
 
 @cli.command()
