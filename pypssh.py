@@ -739,10 +739,10 @@ def version():
     print(
         "\n".join
         ([
-            f"地址: {addr}",
-            f"版本号: {vno}",
-            f"解释器版本: {interrupt_version}",
-            f"发行版: {platform.platform()}"
+            f"Github: {addr}",
+            f"Version: {vno}",
+            f"Running-Interrupt-Version: {interrupt_version}",
+            f"Running-Platform: {platform.platform()}"
         ])
     )
 
