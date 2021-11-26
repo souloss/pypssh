@@ -331,7 +331,7 @@ def concurrent(func: Callable, tasks: list):
     tarfunc = retry(
             stop=stop_after_attempt(RETRY_COUNT), 
             after=retry_logger,
-            retry_error_callback=lambda retry_state: retry_state.outcome.exception().status if isinstance(retry_state.outcome.exception(), SSHException) else Result(hostname=None, exception=retry_state.outcome.exception())
+            retry_error_callback=lambda retry_state: retry_state.outcome.exception().status
         )(func)
     if not tasks and len(tasks) <= 0:
         return []
