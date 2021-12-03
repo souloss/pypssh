@@ -1,3 +1,6 @@
+## 趋势
+![Alt](https://repobeats.axiom.co/api/embed/69933abfccec3ebdcb0cff2459c904bcc9a9ac47.svg "Repobeats analytics image")
+
 ## pypssh
 `pypssh` 命令行程序是一款简易易用的 ssh 批处理工具，它支持直接通过命令行或者配置文件的方式对多台主机进行操作。
 
