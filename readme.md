@@ -95,6 +95,7 @@ pypssh config del-host 192.168.1.100 -t test
 - click: 提供 cli 支持；
 - PyYAML: 提供 yaml 配置文件解析支持；
 - PyInstaller: 提供二进制程序发布支持； 
+- tenacity: 提供重试支持；
 开发时依赖如下：
 - altgraph: alt 模块调试
 - autopep8: 代码格式化

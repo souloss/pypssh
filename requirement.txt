@@ -17,3 +17,4 @@ six==1.16.0
 typing-extensions==3.10.0.2
 typing-inspect==0.7.1
 zipp==3.6.0
+tenacity==8.0.1
