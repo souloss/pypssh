@@ -439,7 +439,7 @@ def gen(name:str, password:Optional[str]=None):
             os.remove(Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub"))
         click.echo(f"key {name} generate faild! beacuase {ex}")
         exit(1)
-    click.echo(f"key {name} generate successful! public key is:\n"," ".join(public_content))
+    click.echo(f"key {name} generate successful! public key is:\n{' '.join(public_content)}")
 
 @key.command()
 def ls():
