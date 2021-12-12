@@ -424,7 +424,7 @@ def gen(name:str, password:Optional[str]=None):
     """
     if Path(KEY_MANAGEMENT_PATH).joinpath(name).exists():
         click.echo(f"key {name} already exist!")
-        exit(1)
+        sys.exit(1)
     key = paramiko.RSAKey.generate(2048)
     try:
         with open(Path(KEY_MANAGEMENT_PATH).joinpath(name),"w+") as file:
@@ -438,7 +438,7 @@ def gen(name:str, password:Optional[str]=None):
         if Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub").exists():
             os.remove(Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub"))
         click.echo(f"key {name} generate faild! beacuase {ex}")
-        exit(1)
+        sys.exit(1)
     click.echo(f"key {name} generate successful! public key is:\n{' '.join(public_content)}")
 
 @key.command()
