@@ -4,6 +4,7 @@ import re
 import os
 import sys
 import ast
+import ssl
 import time
 import socket
 import copy
@@ -162,7 +163,10 @@ class Evaluator(ast.NodeTransformer):
         tree = ast.parse(expr)
         tree = ast.fix_missing_locations(self.visit(tree))
         # print(f"result: {ast.dump(tree)}")
-        return tree.body[0].value
+        if isinstance(tree.body[0].value, bool):
+            return tree.body[0].value
+        else:
+            raise NotImplemented(tree)
 
 
 def get_ssh_logger(host: Host):
@@ -328,7 +332,7 @@ def concurrent(func: Callable, tasks: list):
     tarfunc = retry(
             stop=stop_after_attempt(RETRY_COUNT), 
             after=retry_logger,
-            retry_error_callback=lambda retry_state: retry_state.outcome.exception().status if isinstance(retry_state.outcome.exception(), SSHException) else Result(hostname=None, exception=retry_state.outcome.exception())
+            retry_error_callback=lambda retry_state: retry_state.outcome.exception().status
         )(func)
     if not tasks and len(tasks) <= 0:
         return []
@@ -341,6 +345,20 @@ def concurrent(func: Callable, tasks: list):
             result_list.append(future.result())
         return result_list
 
+def echo(output_mode:str, cls, datas, template):
+    if output_mode == "none":
+        return
+    elif output_mode == "template":
+        template = Template(template, lstrip_blocks=True, trim_blocks=True)
+        datas.sort(key=lambda k: int(k.hostname.replace(".", "")))
+        for r in datas:
+            click.echo(template.render(dataclasses.asdict(r)))
+    elif output_mode == "json":
+        click.echo(marshmallow_dataclass.class_schema(
+            cls)().dumps(datas, many=True))
+    elif output_mode == "yaml":
+        datas = [ dataclasses.asdict(item) for item in datas ]
+        click.echo(yaml.dump(datas, allow_unicode=True))
 
 def get_target(hosts: Dict[str, Host], name):
     result = []
@@ -383,6 +401,74 @@ def cli(inventory, log_level, target):
     global TARGET
     if target:
         TARGET = get_target(hosts, target)
+
+# key management cmd
+
+KEY_MANAGEMENT_PATH = os.path.join(MAIN_DIR, "keys")
+
+@cli.group()
+@click.option('-p', '--path', default=KEY_MANAGEMENT_PATH, type=click.types.Path(), required=False, help="key management path")
+def key(path:str):
+    """
+    key management
+    """
+    KEY_MANAGEMENT_PATH = path
+    os.makedirs(KEY_MANAGEMENT_PATH, exist_ok=True)
+
+@key.command()
+@click.argument('name', type=str, required=True)
+@click.option('-p','--password', type=str)
+def gen(name:str, password:Optional[str]=None):
+    """
+    key generate
+    """
+    if Path(KEY_MANAGEMENT_PATH).joinpath(name).exists():
+        click.echo(f"key {name} already exist!")
+        exit(1)
+    key = paramiko.RSAKey.generate(2048)
+    try:
+        with open(Path(KEY_MANAGEMENT_PATH).joinpath(name),"w+") as file:
+            key.write_private_key(file, password)
+        public_content = ["ssh-rsa", key.get_base64()]
+        with open(Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub"),"w+") as file:
+            file.write(" ".join(public_content))
+    except Exception as ex:
+        if Path(KEY_MANAGEMENT_PATH).joinpath(name).exists():
+            os.remove(Path(KEY_MANAGEMENT_PATH).joinpath(name))
+        if Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub").exists():
+            os.remove(Path(KEY_MANAGEMENT_PATH).joinpath(name).with_suffix(".pub"))
+        click.echo(f"key {name} generate faild! beacuase {ex}")
+        exit(1)
+    click.echo(f"key {name} generate successful! public key is:\n"," ".join(public_content))
+
+@key.command()
+def ls():
+    """
+    key list
+    """
+    click.echo('date\t\t\tname')
+    click.echo('----------------------------')
+    for item in Path(KEY_MANAGEMENT_PATH).glob("*.pub"):
+        time_sruct = time.localtime(item.stat().st_ctime)
+        privekey = item.with_suffix("")
+        if Path(privekey).exists():
+            click.echo(f'{time.strftime("%Y--%m--%d %H:%M:%S", time_sruct)}\t{privekey.name}')
+
+@key.command()
+@click.argument('name', type=str, required=True)
+def get(name:str):
+    """
+    get key
+    """
+    pass
+
+@key.command()
+@click.argument('name', type=str, required=True)
+def trust(name:str):
+    """
+    trust key
+    """
+    pass
 
 
 # config cmd
@@ -522,18 +608,7 @@ def execute(command, needpty, sudo, outmode, template):
             realtime_output, [tuple([h, command]) for h in TARGET])
     else:
         raise NotImplementedError("not impl nonpty command!")
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    echo(outmode, SSHResult, result, template)
 
 
 @cli.command()
@@ -610,19 +685,7 @@ def put(local_file, remote_file, outmode, template, recursive, process):
             raise SSHException(SCPResult(host.hostname, src=local_file, dst=remote_file, completed=False, exception=repr(ex)))
     
     result = concurrent(_upload, [tuple([h]) for h in TARGET])
-
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    echo(outmode, SSHResult, result, template)
 
 
 # pull_default_template = "localhost:{{dst}} <===== {{hostname}}:{{src}} {% if completed %}successfully!{% else %} faild! because {{exception}} {% endif %}"
@@ -678,19 +741,8 @@ def pull(remote_file, local_file, outmode, template, recursive, naming_template,
             raise SSHException(SCPResult(host.hostname, src=remote_file, dst=local_file, completed=False, exception=repr(ex)))
 
     result = concurrent(_download, [tuple([h]) for h in TARGET])
-
-    if outmode == "none":
-        return
-    elif outmode == "template":
-        template = Template(template, lstrip_blocks=True, trim_blocks=True)
-        result.sort(key=lambda k: int(k.hostname.replace(".", "")))
-        for r in result:
-            click.echo(template.render(dataclasses.asdict(r)))
-    elif outmode == "json":
-        click.echo(marshmallow_dataclass.class_schema(
-            SSHResult)().dumps(result, many=True))
-    elif outmode == "yaml":
-        click.echo(yaml.dump(result, allow_unicode=True))
+    
+    echo(outmode, SSHResult, result, template)
 
 
 @cli.command()
@@ -745,6 +797,43 @@ def ping(noicmp):
     click.echo(yaml.dump(result, allow_unicode=True))
 
 
+# version cmd
+def get_resource_path(relative_path:str):
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+def get_build_git_sha():
+    filename = get_resource_path('BUILD_GITSHA')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
+def get_build_repo():
+    filename = get_resource_path('BUILD_GITREPO')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        repolist = [ tuple(i.split()) for i in fh.read().strip().split('\n') ]
+        return repolist
+
+def get_build_date():
+    filename = get_resource_path('BUILD_DATE')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
+def get_last_commit_date():
+    filename = get_resource_path('BUILD_LASTCOMMITDATE')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
 @cli.command()
 def version():
     """
@@ -753,13 +842,18 @@ def version():
     addr = "https://github.com/witchc/pypssh"
     vno = "v0.2.2"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
-    print(
+    click.echo(
         "\n".join
         ([
-            f"地址: {addr}",
-            f"版本号: {vno}",
-            f"解释器版本: {interrupt_version}",
-            f"发行版: {platform.platform()}"
+            f"Github: {addr}",
+            f"Version: {vno}",
+            f"Running-Interrupt-Version: {interrupt_version}",
+            f"Running-Platform: {platform.platform()}",
+            f"OpenSSL version: {ssl.OPENSSL_VERSION}",
+            f"BUILD_DATE: {get_build_date()}",
+            f"BUILD_GIT_SHA: {get_build_git_sha()}",
+            f"BUID_LAST_COMMIT_DATE: {get_last_commit_date()}",
+            F"BUILD_GIT_REPO: {get_build_repo()}",
         ])
     )
 
