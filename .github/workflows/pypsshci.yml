@@ -31,7 +31,7 @@ jobs:
         TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
         TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
       run: |
-        pyinstaller -F pypssh.py
+        ./script/build/package_exec
     - name: Release pypssh Package
       #uses: actions/upload-release-asset@v1
       uses: xresloader/upload-to-github-release@v1
