@@ -68,7 +68,7 @@ class SSHException(Exception):
 @dataclass
 class Host:
     """
-    主机类
+    host model
     """
     hostname: str = "localhost"
     username: str = "root"
@@ -382,13 +382,76 @@ def get_target(hosts: Dict[str, Host], name):
                 get_ssh_logger(host).debug(ex)
     return result
 
-# root cmd
+# version cmd
+def get_resource_path(relative_path:str):
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
+def get_build_git_sha():
+    filename = get_resource_path('BUILD_GITSHA')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
+def get_build_repo():
+    filename = get_resource_path('BUILD_GITREPO')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        repolist = [ tuple(i.split()) for i in fh.read().strip().split('\n') ]
+        return repolist
+
+def get_build_date():
+    filename = get_resource_path('BUILD_DATE')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
+def get_last_commit_date():
+    filename = get_resource_path('BUILD_LASTCOMMITDATE')
+    if not os.path.exists(filename):
+        return 'unknown'
+    with open(filename) as fh:
+        return fh.read().strip()
+
+def print_version():
+    """
+    print version
+    """
+    addr = "https://github.com/witchc/pypssh"
+    # version definition
+    vno = "v0.2.2"
+    interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
+    click.echo(
+        "\n".join
+        ([
+            f"Github: {addr}",
+            f"Version: {vno}",
+            f"Running-Interrupt-Version: {interrupt_version}",
+            f"Running-Platform: {platform.platform()}",
+            f"OpenSSL version: {ssl.OPENSSL_VERSION}",
+            f"BUILD_DATE: {get_build_date()}",
+            f"BUILD_GIT_SHA: {get_build_git_sha()}",
+            f"BUID_LAST_COMMIT_DATE: {get_last_commit_date()}",
+            F"BUILD_GIT_REPO: {get_build_repo()}",
+        ])
+    )
+
+def click_print_version(ctx, param, value):
+    print_version()
+    ctx.exit()
+# root cmd
 
 @click.group()
 @click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=click.types.Path(), required=False, help="inventory.yaml path")
 @click.option('-l', '--log-level', default='INFO', type=click.Choice(["NOTSET", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]), required=False)
 @click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
+@click.option('-v', '--version', is_flag=True, callback=click_print_version, expose_value=False, is_eager=True, help="print program version")
 def cli(inventory, log_level, target):
     if Path(inventory).exists():
         with open(inventory) as file:
@@ -796,66 +859,14 @@ def ping(noicmp):
               'non_working_host': non_working_host}
     click.echo(yaml.dump(result, allow_unicode=True))
 
-
 # version cmd
-def get_resource_path(relative_path:str):
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-def get_build_git_sha():
-    filename = get_resource_path('BUILD_GITSHA')
-    if not os.path.exists(filename):
-        return 'unknown'
-    with open(filename) as fh:
-        return fh.read().strip()
-
-def get_build_repo():
-    filename = get_resource_path('BUILD_GITREPO')
-    if not os.path.exists(filename):
-        return 'unknown'
-    with open(filename) as fh:
-        repolist = [ tuple(i.split()) for i in fh.read().strip().split('\n') ]
-        return repolist
-
-def get_build_date():
-    filename = get_resource_path('BUILD_DATE')
-    if not os.path.exists(filename):
-        return 'unknown'
-    with open(filename) as fh:
-        return fh.read().strip()
-
-def get_last_commit_date():
-    filename = get_resource_path('BUILD_LASTCOMMITDATE')
-    if not os.path.exists(filename):
-        return 'unknown'
-    with open(filename) as fh:
-        return fh.read().strip()
-
 @cli.command()
 def version():
     """
-    print version
+    print program version
     """
-    addr = "https://github.com/witchc/pypssh"
-    vno = "v0.2.2"
-    interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
-    click.echo(
-        "\n".join
-        ([
-            f"Github: {addr}",
-            f"Version: {vno}",
-            f"Running-Interrupt-Version: {interrupt_version}",
-            f"Running-Platform: {platform.platform()}",
-            f"OpenSSL version: {ssl.OPENSSL_VERSION}",
-            f"BUILD_DATE: {get_build_date()}",
-            f"BUILD_GIT_SHA: {get_build_git_sha()}",
-            f"BUID_LAST_COMMIT_DATE: {get_last_commit_date()}",
-            F"BUILD_GIT_REPO: {get_build_repo()}",
-        ])
-    )
+    print_version()
+
 
 
 if __name__ == '__main__':
