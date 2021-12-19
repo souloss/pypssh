@@ -537,6 +537,9 @@ def trust(name:str):
 # config cmd
 @cli.group()
 def config():
+    """
+    configuration management
+    """
     pass
 
 default_config ="""
