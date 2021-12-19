@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+VERSION="$(python setup.py --version)"
+
+GITSHA="$(script/build/write-git-sha)"
+GITREPO="$(script/build/write-git-repo)"
+BUILDDATE="$(script/build/write-build-date)"
+COMMITDATE="$(script/build/write-commit-date)"
+echo "${GITSHA}" > BUILD_GITSHA
+echo "${GITREPO}" > BUILD_GITREPO
+echo "${BUILDDATE}" > BUILD_DATE
+echo "${COMMITDATE}" > BUILD_LASTCOMMITDATE
+python setup.py sdist bdist_wheel
+rm -f {BUILD_GITSHA,BUILD_GITREPO,BUILD_DATE,BUILD_LASTCOMMITDATE}

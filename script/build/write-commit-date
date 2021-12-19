@@ -1,0 +1,8 @@
+#!/bin/bash
+
+COMMIT_DATE="$(git show -s --format=%cD)"
+if [[ "${?}" != "0" ]]; then
+    echo "Couldn't get Commit Date. Setting to 'unknown' instead"
+    COMMIT_DATE="unknown"
+fi
+echo "${COMMIT_DATE}"

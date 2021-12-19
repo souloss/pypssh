@@ -6,3 +6,6 @@ pypssh.spec
 build
 dist
 packages
+
+
+!script/**
