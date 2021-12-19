@@ -1,0 +1,8 @@
+#!/bin/bash
+
+CURRENT_DATE="$(date --rfc-2822)"
+if [[ "${?}" != "0" ]]; then
+    echo "Couldn't get Current Date. Setting to 'unknown' instead"
+    CURRENT_DATE="unknown"
+fi
+echo "${CURRENT_DATE}"
