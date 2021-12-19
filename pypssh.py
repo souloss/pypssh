@@ -524,18 +524,19 @@ def ls():
 @click.argument('name', type=str, required=True)
 def get(name:str):
     """
+    Not implemented
     get key
     """
-    pass
+    click.echo("Not implemented")
 
 @key.command()
 @click.argument('name', type=str, required=True)
 def trust(name:str):
     """
+    Not implemented
     trust key
     """
-    pass
-
+    click.echo("Not implemented")
 
 # config cmd
 @cli.group()
