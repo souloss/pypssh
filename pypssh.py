@@ -425,7 +425,7 @@ def print_version():
     """
     addr = "https://github.com/witchc/pypssh"
     # version definition
-    vno = "v0.2.2"
+    vno = "v0.2.3"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     click.echo(
         "\n".join
@@ -443,8 +443,11 @@ def print_version():
     )
 
 def click_print_version(ctx, param, value):
-    print_version()
-    ctx.exit()
+    if value:
+        print_version()
+        ctx.exit()
+    else:
+        return
 # root cmd
 
 @click.group()
