@@ -157,5 +157,5 @@ development dependency：
 This project is under the MIT License. See the [LICENSE](./LICENSE)  file for the full license text.
 
 ## Thanks
-- [shields](img.shields.io): provides a beautiful badge.
-- [axiom](repobeats.axiom.co): provides a beautiful analysis image.
+- [shields](https://img.shields.io): provides a beautiful badge.
+- [axiom](https://repobeats.axiom.co): provides a beautiful analysis image.
