@@ -141,15 +141,31 @@ class Evaluator(ast.NodeTransformer):
     def visit_BoolOp(self, node):
         self.generic_visit(node)
         # print(f"boolop: {ast.dump(node)}")
+        def bool_and_op(a, b):
+            if not isinstance(a, bool):
+                a =  self.visit_Expr(a).value
+            if not isinstance(b, bool):
+                b = self.visit_Expr(b).value
+            return a and b
+        def bool_or_op(a, b):
+            if not isinstance(a, bool):
+                a =  self.visit_Expr(a).value
+            if not isinstance(b, bool):
+                b = self.visit_Expr(b).value
+            return a or b
         boolop = {
-            ast.And: lambda a, b: a and b,
-            ast.Or: lambda a, b: a or b,
+            ast.And: bool_and_op,
+            ast.Or: bool_or_op,
         }.get(node.op.__class__)
         return ast.Expr(functools.reduce(boolop, [i for i in map(lambda v:v.value if hasattr(v,'value') else v , node.values)]))
 
     def visit_Expr(self, node):
         self.generic_visit(node)
         # print(f"expr: {ast.dump(node)}")
+        if not hasattr(node, "value"):
+            exist = node.id in self.data.keys()
+            # print(exist, node.value.id, self.data.keys())
+            return ast.Expr(exist)
         if isinstance(node.value, ast.Expr):
             return self.visit_Expr(node.value)
         elif isinstance(node.value, ast.Name):
@@ -425,7 +441,7 @@ def print_version():
     """
     addr = "https://github.com/witchc/pypssh"
     # version definition
-    vno = "v0.2.3"
+    vno = "v0.2.4"
     interrupt_version = "Python " + ' '.join(sys.version.split('\n'))
     click.echo(
         "\n".join
