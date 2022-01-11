@@ -472,11 +472,12 @@ def click_print_version(ctx, param, value):
 @click.option('-t', '--target', type=str, required=False, help="Host IP address or label expression")
 @click.option('-v', '--version', is_flag=True, callback=click_print_version, expose_value=False, is_eager=True, help="print program version")
 def cli(inventory, log_level, target):
+    hosts_dict = {}
     if Path(inventory).exists():
         with open(inventory) as file:
-            hosts_dict = yaml.load(file, Loader=Loader)
-    else:
-        hosts_dict = {}
+            temp = yaml.load(file, Loader=Loader)
+            if temp and isinstance(temp, dict):
+                hosts_dict = temp
     hosts_dict = fillinghostname_fromkey(hosts_dict)
     hosts = render_hosts(hosts_dict)
     ssh_logger.setLevel(log_level)
