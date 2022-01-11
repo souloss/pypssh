@@ -48,7 +48,12 @@ logger.setLevel(logging.INFO)
 logger.removeHandler(logger.handlers)
 logger.addHandler(logging.StreamHandler())
 
+# 用于存储 pypssh 相关文件的主目录
 MAIN_DIR = os.path.join(os.path.expanduser('~'), ".pypssh")
+# 内建环境变量前缀
+BUILDIN_ENV_PREFIX="PYPSSH"
+
+# pattern
 SLICE_PATTERN = "\[(\w*):(\w*)\]"
 SLICE_NON_GROUP_PATTERN = "\[\w*:\w*\]"
 
@@ -78,6 +83,7 @@ class Host:
     pkpasswd: str = ""
     sudo: bool = False
     timeout: int = 5
+    env: Dict[str,str] = field(default_factory=dict)
     tags: Dict[str, str] = field(default_factory=dict)
 
 @dataclass
@@ -314,6 +320,10 @@ def realtime_output(host: Host, command: str):
         # 若是非阻塞则强制 recv 时会造成错误
         # channel.setblocking(0)
         channel.exec_command(command)
+        # set environment
+        channel.set_environment_variable(name=f"{BUILDIN_ENV_PREFIX}_HOSTNAME", value=host.hostname)
+        for key, value in host.env:
+            channel.set_environment_variable(name=key, value=value)     
         if host.sudo:
             while channel.recv_ready() == False:
                 stdout = channel.recv(4096)
