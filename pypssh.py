@@ -14,10 +14,11 @@ import platform
 import itertools
 import functools
 import dataclasses
+from click.core import V
 import encodings.idna
 
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures._base import as_completed
 from typing import Optional, List, Callable, Dict
@@ -654,14 +655,104 @@ def convert(version, config_file):
         logger.error("unsupported version!")
 
 
-# @config.command()
-# def add_host():
-#     pass
+@config.command()
+@click.argument('input', type=click.File('r'))
+@click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=click.types.Path(), required=False, help="inventory.yaml path")
+@click.option('-F', '--field-separator', type=str, required=False)
+@click.option('-u', '--username', type=str, required=True)
+@click.option('-p', '--passwd', type=str, required=True)
+@click.option('-P', '--port', type=str, required=False, default=22)
+@click.option('--pkfile', type=str, required=False)
+@click.option('--pkpasswd', type=str, required=False)
+@click.option('-s', '--sudo', type=str, required=False, default=False)
+@click.option('-t', '--timeout', type=int, required=False, default=5)
+@click.option('-e', '--env', type=str, required=False, multiple=True)
+@click.option('-t', '--tag', type=str, required=False, multiple=True)
+def add_host(input, inventory, field_separator, username, passwd, port, pkfile, pkpasswd, sudo, timeout, env, tag):
+    """
+    example:
+        echo 172.18.40.40 | pypssh config add-host - -u root -p root
+    """
+    hostnames = input.read().split(sep=field_separator)
+    _env = {}
+    _tags = {}
+    src_hosts = {}
+    if Path(inventory).exists():
+        with open(inventory) as file:
+            temp = yaml.load(file, Loader=Loader)
+            if temp and isinstance(temp, dict):
+                src_hosts = temp
 
-# @config.command()
-# def del_host():
-#     pass
+    for e in env:
+        k, v = e.split("=")
+        _env[k] = v
+    for t in tag:
+        k, v = t.split("=")
+        _tags[k] = v
 
+    for hostname in hostnames:
+        host = Host(
+            hostname=hostname,
+            username=username,
+            port=port,
+            password=passwd,
+            pkfile=pkfile,
+            pkpasswd=pkpasswd,
+            sudo=sudo,
+            timeout=timeout,
+            env=_env,
+            tags=_tags
+        )
+        src_hosts[f"{hostname}_{username}"] = asdict(host)
+    os.makedirs(Path(inventory).parent, exist_ok=True)
+    with open(inventory, "w+") as file:
+        yaml.dump(src_hosts, file)
+    click.echo(f"hosts {hostnames} add successful!")
+
+# 支持批量选择，条件选择多种选择方式对主机进行删除
+# @config.command()
+# @click.option('-i', '--inventory', default=os.path.join(MAIN_DIR, "inventory", "inventory.yaml"), type=click.types.Path(), required=False, help="inventory.yaml path")
+# @click.option('-h', '--hostname', type=str, required=True)
+# @click.option('-u', '--username', type=str, required=True)
+# @click.option('-p', '--passwd', type=str, required=True)
+# @click.option('-P', '--port', type=str, required=False, default=22)
+# @click.option('--pkfile', type=str, required=False)
+# @click.option('--pkpasswd', type=str, required=False)
+# @click.option('-s', '--sudo', type=str, required=False, default=False)
+# @click.option('-t', '--timeout', type=int, required=False, default=5)
+# @click.option('-e', '--env', type=str, required=False, multiple=True)
+# @click.option('-t', '--tag', type=str, required=False, multiple=True)
+# def del_host(inventory, field_separator, username, passwd, port, pkfile, pkpasswd, sudo, timeout, env, tag):
+#     """
+#     example:
+#         echo 172.18.40.40 | pypssh config add-host - -u root -p root
+#     """
+#     _env = {}
+#     _tags = {}
+#     hostnames = []
+#     src_hosts = {}
+#     if Path(inventory).exists():
+#         with open(inventory) as file:
+#             temp = yaml.load(file, Loader=Loader)
+#             if temp and isinstance(temp, dict):
+#                 src_hosts = temp
+
+#     for e in env:
+#         k, v = e.split("=")
+#         _env[k] = v
+#     for t in tag:
+#         k, v = t.split("=")
+#         _tags[k] = v
+    
+#     for session, host in src_hosts.items():
+#         host = Host(**host)
+#         if 
+
+    
+#     os.makedirs(Path(inventory).parent, exist_ok=True)
+#     with open(inventory, "w+") as file:
+#         yaml.dump(src_hosts, file)
+#     click.echo(f"hosts {hostnames} del successful!")
 
 # func cmd
 """
