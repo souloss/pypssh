@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  sshd:
+    image: panubo/sshd
+    restart: always
+    environment:
+      - SSH_ENABLE_ROOT=true
+      - SSH_ENABLE_ROOT_PASSWORD_AUTH=true
+    volumes:
+      - "./chpasswd.sh:/etc/entrypoint.d/chpasswd.sh"
+      - "./qos.sh:/etc/entrypoint.d/qos.sh"
+    networks:
+      - sshd
+
+networks:
+  sshd:
+    ipam:
+      driver: default
+      config:
+        - subnet: "10.2.0.0/16"
