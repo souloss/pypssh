@@ -9,7 +9,6 @@ services:
       - SSH_ENABLE_ROOT_PASSWORD_AUTH=true
     volumes:
       - "./chpasswd.sh:/etc/entrypoint.d/chpasswd.sh"
-      - "./qos.sh:/etc/entrypoint.d/qos.sh"
     networks:
       - sshd
 
