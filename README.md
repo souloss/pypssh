@@ -1,14 +1,17 @@
 # pypssh
-[![Language](https://img.shields.io/badge/Language-Python-blue.svg Language: Python Language: Python  )](https://www.python.org/ Welcome to Python.org Welcome to Python.org  )
-[![Github Workflow Status](https://img.shields.io/github/workflow/status/souloss/pypssh/pypsshci build: https://github.com/badges/shields/issues/8671 build: https://github.com/badges/shields/issues/8671  )](https://github.com/souloss/pypssh/actions/workflows/pypsshci.yml pypsshci · Workflow runs · souloss/pypssh pypsshci · Workflow runs · souloss/pypssh  )
-[![Version](https://img.shields.io/github/v/release/souloss/pypssh?include_prereleases release: v0.2.4 release: v0.2.4  )](https://github.com/souloss/pypssh/releases Releases · souloss/pypssh Releases · souloss/pypssh  )
-[![LICENSE](https://img.shields.io/github/license/souloss/pypssh license: MIT license: MIT  )](LICENSE)
-[![Github issues](https://img.shields.io/github/issues/souloss/pypssh issues: 2 open issues: 2 open  )](https://github.com/souloss/pypssh/issues souloss/pypssh souloss/pypssh  )
-[![Github forks](https://img.shields.io/github/forks/souloss/pypssh   )](https://github.com/souloss/pypssh/network/members   )
-[![Github stars](https://img.shields.io/github/stars/souloss/pypssh   )](https://github.com/souloss/pypssh/stargazers   )
-![Page Views](https://views.whatilearened.today/views/github/souloss/pypssh.svg   )
-[![Release Download Total](https://img.shields.io/github/downloads/souloss/pypssh/total   )](https://github.com/souloss/pypssh/releases Releases · souloss/pypssh Releases · souloss/pypssh  )
-> **PyPSSH** is a powerful and easy-to-use parallel SSH client designed for large-scale server management. It supports features such as batch command execution, parallel file transfer, connectivity testing, labeled host selection, and namespace isolation, helping operations engineers significantly improve work efficiency.
+[![Language](https://img.shields.io/badge/Language-Python-blue.svg)](https://www.python.org/)
+[![Github Workflow Status](https://img.shields.io/github/workflow/status/souloss/pypssh/pypsshci)](https://github.com/souloss/pypssh/actions/workflows/pypsshci.yml)
+[![Version](https://img.shields.io/github/v/release/souloss/pypssh?include_prereleases)](https://github.com/souloss/pypssh/releases)
+[![LICENSE](https://img.shields.io/github/license/souloss/pypssh)](LICENSE)
+
+[![Github issues](https://img.shields.io/github/issues/souloss/pypssh)](https://github.com/souloss/pypssh/issues)
+[![Github forks](https://img.shields.io/github/forks/souloss/pypssh)](https://github.com/souloss/pypssh/network/members)
+[![Github stars](https://img.shields.io/github/stars/souloss/pypssh)](https://github.com/souloss/pypssh/stargazers)
+![Page Views](https://views.whatilearened.today/views/github/souloss/pypssh.svg)
+[![Release Download Total](https://img.shields.io/github/downloads/souloss/pypssh/total)](https://github.com/souloss/pypssh/releases)
+
+
+> **PyPSSH** is a powerful and easy-to-use parallel SSH client designed for large-scale server management. It supports features such as batch command execution, parallel file transfer, connectivity testing, labeled host selection, and namespace isolation, helping operations engineers significantly improve work efficiency.  
 --- 
 - [Chinese](./README_zh-CN.md).
 - [English](./README.md)
