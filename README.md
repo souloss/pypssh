@@ -1,161 +1,178 @@
 # pypssh
-[![Language](https://img.shields.io/badge/Language-Python-blue.svg)](https://www.python.org/)
-[![Github Workflow Status](https://img.shields.io/github/workflow/status/witchc/pypssh/pypsshci)](https://github.com/witchc/pypssh/actions/workflows/pypsshci.yml)
-[![Version](https://img.shields.io/github/v/release/witchc/pypssh?include_prereleases)](https://github.com/witchc/pypssh/releases)
-[![LICENSE](https://img.shields.io/github/license/witchc/pypssh)](LICENSE)
-
-[![Github issues](https://img.shields.io/github/issues/witchc/pypssh)](https://github.com/witchc/pypssh/issues)
-[![Github forks](https://img.shields.io/github/forks/witchc/pypssh)](https://github.com/witchc/pypssh/network/members)
-[![Github stars](https://img.shields.io/github/stars/witchc/pypssh)](https://github.com/witchc/pypssh/stargazers)
-![Page Views](https://views.whatilearened.today/views/github/witchc/pypssh.svg)
-[![Release Download Total](https://img.shields.io/github/downloads/witchc/pypssh/total)](https://github.com/witchc/pypssh/releases)
-
-pypssh is a high-performance and user friendly ssh tool. It can efficiently execute commands, execute script files, and transfer files. 
-
-- [中文](./README_zh-CN.md).
+[![Language](https://img.shields.io/badge/Language-Python-blue.svg Language: Python Language: Python  )](https://www.python.org/ Welcome to Python.org Welcome to Python.org  )
+[![Github Workflow Status](https://img.shields.io/github/workflow/status/souloss/pypssh/pypsshci build: https://github.com/badges/shields/issues/8671 build: https://github.com/badges/shields/issues/8671  )](https://github.com/souloss/pypssh/actions/workflows/pypsshci.yml pypsshci · Workflow runs · souloss/pypssh pypsshci · Workflow runs · souloss/pypssh  )
+[![Version](https://img.shields.io/github/v/release/souloss/pypssh?include_prereleases release: v0.2.4 release: v0.2.4  )](https://github.com/souloss/pypssh/releases Releases · souloss/pypssh Releases · souloss/pypssh  )
+[![LICENSE](https://img.shields.io/github/license/souloss/pypssh license: MIT license: MIT  )](LICENSE)
+[![Github issues](https://img.shields.io/github/issues/souloss/pypssh issues: 2 open issues: 2 open  )](https://github.com/souloss/pypssh/issues souloss/pypssh souloss/pypssh  )
+[![Github forks](https://img.shields.io/github/forks/souloss/pypssh   )](https://github.com/souloss/pypssh/network/members   )
+[![Github stars](https://img.shields.io/github/stars/souloss/pypssh   )](https://github.com/souloss/pypssh/stargazers   )
+![Page Views](https://views.whatilearened.today/views/github/souloss/pypssh.svg   )
+[![Release Download Total](https://img.shields.io/github/downloads/souloss/pypssh/total   )](https://github.com/souloss/pypssh/releases Releases · souloss/pypssh Releases · souloss/pypssh  )
+> **PyPSSH** is a powerful and easy-to-use parallel SSH client designed for large-scale server management. It supports features such as batch command execution, parallel file transfer, connectivity testing, labeled host selection, and namespace isolation, helping operations engineers significantly improve work efficiency.
+--- 
+- [Chinese](./README_zh-CN.md).
 - [English](./README.md)
+## ✨ Core Features
+| Feature | Description |
+|---|---|
+| 🚀 **Parallel Execution** | Supports parallel command execution and file transfer across thousands of servers |
+| 🎯 **Smart Selection** | Flexibly select target hosts through IP expressions, label expressions, and server groups |
+| 🔐 **Namespaces** | Configuration isolation for multiple environments (testing, staging, production) |
+| 🖥️ **User-Friendly Interface** | Colored progress bars, real-time output, failure details |
+| 📦 **Rich Output Formats** | Supports JSON / YAML / templated / silent output |
+| 🔧 **Easy to Extend** | Modular design, convenient for secondary development |
 
-## Features
-- Supports four common usages of ssh：
-  - `execute`: remote execute single-line commands.
-  - `execfile`: remote execution of local scripts;
-  - `put`: upload of files;
-  - `get`: downloaded of files;
-- Supports `sudo`.
-- Support to declare multiple hosts in the configuration file by means of lists and slices.
-- Support host selection based on host name, label, label logical expression.
-- Supports jinja2 template redefinition the output of all subcommands on selected host.
-- Support port test and ssh connection test on selected host.
-
-## Installation
-You can download pre-built binaries for CentOS 8 (mainly dependent on higher versions of GLIBC) from [GitHub Release Page](https://github.com/witchc/pypssh/releases).
-
-It can also be install `pypssh` by compiling：
+## 🏁 Quick Start
+### 1. Installation
+You can download pre-built binaries for CentOS 8 (mainly depends on a higher version of GLIBC) from the [GitHub releases page](https://github.com/souloss/pypssh/releases).  
+You can also install `pypssh` by compiling:
 ```bash
-$ git clone  https://github.com/witchc/pypssh 
+$ git clone  https://github.com/souloss/pypssh    
 $ cd pypssh
-$ python3 -m venv .venv  # requires python 3.7 or higher
-$ source .venv/bin/activate
-$ pip install -r requirement.txt
-$ ./script/build/package_exec # used pyinstaller build single binary file.
+$ uv sync
+$ ./script/build/package_exec # Build a single binary using pyinstaller
 $ ./dist/pypssh --version
 ```
 
-## Usage
+
+### 2. Add a Server
 ```bash
-$ pypssh --help
-Usage: pypssh [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  -i, --inventory PATH            inventory.yaml path
-  -l, --log-level [NOTSET|DEBUG|INFO|WARN|ERROR|FATAL]
-  -t, --target TEXT               Host IP address or label expression
-  --help                          Show this message and exit.
-
-Commands:
-  config    config management
-  execfile  execute script file
-  execute   execute command
-  key       key management
-  ls        list host
-  ping      ping hosts
-  pull      download file example: pypssh -t 192.168.31.1 put...
-  put       upload file example: pypssh -t 192.168.31.1 put /etc/yum.conf...
-  version   print version
-
-# create a default configuration file
-$ pypssh config dump-default
-# or according to the old version of the configuration conversion to the new version of the configuration file
-$ pypssh config convert config/old_inventory.conf  > /root/.pypssh/inventory/inventory.yaml
-
-# use -t to select the host to execute the command
-$ pypssh -t 192.168.1.100 execute -e NAME=peter 'echo hello $NAME'
-
-# use -t to select host slices and list the hosts in the configuration
-$ pypssh -t 192.168.3[2:90].10[5:9] ls
-
-# use -t to select the host slice with a list and list the hosts in the configuration
-$ pypssh -t 192.168.32.1[5:9,32,35,38] ls
-
-# use -t to select the host with the master tag to upload files
-$ pypssh -t master put [localfile] [remotefile]
-
-# use -t to select the host with the mysql==master tag to upload files
-$ pypssh -t mysql==master get [remotefile] [localdir]
-
-# use -t to select the host where the complex label expression evaluates to True to upload files
-$ pypssh -t 'ds01 and (redis==master or mysql)' execfile test.py
+pypssh config add-server 192.168.1.10 \
+  --name web1 \
+  --username root \
+  --password 123456 \
+  --label env=prod,role=web
+```
+### 3. Bulk Command Execution
+```bash
+pypssh exec --hosts "192.168.1.0/24" --sudo "systemctl restart nginx"
 ```
 
-## Configure
-Sample configuration：  
-```yaml
-192.168.31.133:
-  port: 22
-  username: mysql
-  password: bXlzcWwkMTIz
-  tags:
-    mysql: master
-# 192.168.31.135 ~ 192.168.31.138
-192.168.31.13[5:9]:
-  port: 22
-  username: mysql
-  password: bXlzcWwkMTIz
-  tags:
-    mysql: master
-# 192.(22~25).(95~98).(95~98)
-192.[22:26].[95:99].[95:99]:
-  port: 22
-  username: mysql
-  pkfile: "/root/.ssh/id_rsa"
-  pkpasswd: ""
-  sudo: false
-  tags:
-    mysql: master
-# 192.168.31.[21,22,23,24,28,29]
-192.168.31.2[1:5,8,9]:
-  port: 22
-  username: mysql
-  pkfile: "/root/.ssh/id_rsa"
-  pkpasswd: ""
-  sudo: false
-  tags:
-    mysql: master
+### 4. Upload Files
+```bash
+pypssh file upload ./dist.tar.gz /opt/web/ \
+  --group web-servers \
+  --recursive \
+  --preserve
 ```
 
-## pypssh developer
-### dependency
-runtime dependency：  
-- paramiko/scp: Provide ssh/scp client support.
-- jinja2: Provide template rendering support when outputting command results.
-- marshmallow_dataclass: Provide support for dataclass conversion to dict;
-- click: Provide cli support.
-- PyYAML: Provide yaml configuration file parsing support.
-- tenacity: Provide retry support.
+### 5. Connectivity Test
+```bash
+pypssh ping --selector "env=prod" --max-concurrent 100
+```
 
-development dependency：
-- altgraph: Provide alt module debugging support.
-- autopep8: Provide code formatting support.
-- PyInstaller：Provide binary program release support.
+## 📖 Detailed Usage Guide
+### 1.Configuration Management
+```bash
+# Create a namespace
+pypssh config create-namespace prod --description "Production Environment"
 
-### Promise
-- The import statement is written in accordance with the following specifications：
-  - Built-in packages are listed in front of dependent packages.
-  - The short package name comes before the long.
-  - `import ...` comes before `from ... import`
-- By default, `~/.pypssh/` is used as the data directory to store its own data and configuration files.
-- The output of the subcommand uses `echo(output_mode:str, cls, datas, template)` or `click.echo(yaml.dump({{result}}, allow_unicode=True))`.
-- Use `get_ssh_logger(host)` in the ssh task function to get the log instance, so that the host name can be printed in the header of each log.
+# List namespaces
+pypssh config list-namespaces
 
-### Reference
+# Delete a namespace
+pypssh config delete-namespace test --force
+```
+
+### 2. Server Groups
+```bash
+# Add
+pypssh config add-server 10.0.0.21 --name db1 --username ubuntu --private-key-path ~/.ssh/id_rsa
+
+# List
+pypssh config list-servers --namespace prod
+
+# Update
+pypssh config update-server web1 --add-label region=us-east-1 --remove-label temp=true
+
+# Delete
+pypssh config delete-server web1 --force
+```
+
+### 3. Server Groups
+```bash
+# Create
+pypssh config add-group web-servers \
+  --description "All web nodes" \
+  --ip-expression "192.168.1.[10:50]" \
+  --label-expression "role=web" \
+  --default-username deploy
+
+# Use
+pypssh exec --group web-servers "uptime"
+```
+
+### 4.Command Execution
+| Option             | Example                         | Description       |
+| ------------------ | ------------------------------- | ----------------- |
+| `--hosts`          | `192.168.1.0/24,!192.168.1.100` | IP expression     |
+| `--selector`       | `env=prod,role=web`             | Label expression  |
+| `--group`          | `web-servers`                   | Server group      |
+| `--server`         | `web1`                          | Single server     |
+| `--max-concurrent` | `100`                           | Concurrency level |
+| `--timeout`        | `30`                            | Command timeout   |
+| `--output`         | `json`                          | Output format     |
+| `--template`       | `"${host}: ${stdout}"`          | Custom template   |
+
+
+```bash
+pypssh exec \
+  --namespace prod \
+  --selector "env=prod,role=web,!maintenance" \
+  --sudo \
+  --output json \
+  --output-file results.json \
+  "apt update && apt upgrade -y"
+```
+
+## 🗂️ Import & Export Configurations
+```bash
+# Export one namespace
+pypssh config export prod.yml --namespace prod
+
+# Export all
+pypssh config export all.yml
+
+# Import
+pypssh config import prod.yml --namespace prod  
+```
+
+## ⚙️ IP & Label Expression Syntax
+### IP Expressions
+| Example                         | Description |
+| ------------------------------- | ----------- |
+| `192.168.1.10`                  | Single IP   |
+| `192.168.1.0/24`                | CIDR        |
+| `192.168.1.10-192.168.1.20`     | Range       |
+| `192.168.1.10,192.168.1.15`     | List        |
+| `192.168.1.0/24 !192.168.1.100` | Exclude     |
+| `192.168.[1:3].[10:20]`         | Field range |
+
+
+### Label Expressions
+| Example                       | Description      |
+| ----------------------------- | ---------------- |
+| `env=prod`                    | Equals           |
+| `role!=db`                    | Not equals       |
+| `env in (prod,staging)`       | Inclusion        |
+| `region notin (cn-north-1)`   | Exclusion        |
+| `has(sshd)`                   | Tag existence    |
+| `count(disk) > 2`             | Count comparison |
+| `startswith(hostname, "web")` | Prefix match     |
+| `regex(hostname, "web-\d+")`  | Regex match      |
+
+
+
+### References
 [ssh-protocol - SSH.COM](https://www.ssh.com/academy/ssh/protocol)  
 [tenacity document](https://tenacity.readthedocs.io/en/latest/index.html)  
 [click document](https://click.palletsprojects.com/en/7.x/)  
 
 
 ## License
-This project is under the MIT License. See the [LICENSE](./LICENSE)  file for the full license text.
+This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for the full license text.
 
-## Thanks
-- [shields](https://img.shields.io): provides a beautiful badge.
-- [axiom](https://repobeats.axiom.co): provides a beautiful analysis image.
+## Acknowledgments
+- [shields](img.shields.io): for beautiful badges
+- [axiom](repobeats.axiom.co): for awesome repo analytics
+- [ipcalc](https://jodies.de/ipcalc)

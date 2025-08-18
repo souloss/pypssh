@@ -1,0 +1,38 @@
+[project]
+name = "pypssh"
+version = "0.1.0"
+description = "pypssh is a high-performance and user friendly ssh tool. star and issue are welcome"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "altgraph==0.17",
+    "asyncssh==2.21.0",
+    "autopep8==1.6.0",
+    "bcrypt==3.2.0",
+    "cffi==1.15.0",
+    "click>=8.0.0",
+    "cryptography>=41.0.0",
+    "importlib-metadata==4.8.1",
+    "jinja2==3.0.2",
+    "keyring>=23.9.3",
+    "markupsafe==2.0.1",
+    "marshmallow==3.14.0",
+    "marshmallow-dataclass==8.5.3",
+    "mypy-extensions==0.4.3",
+    "paramiko==2.10.1",
+    "pycodestyle==2.8.0",
+    "pycparser==2.20",
+    "pydantic>=1.9.2",
+    "pyinstaller==3.6",
+    "pyinstaller-hooks-contrib==2020.10",
+    "pynacl==1.4.0",
+    "pytest>=8.4.1",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "scp==0.14.1",
+    "six==1.16.0",
+    "tenacity==8.0.1",
+    "typing-extensions==4.12.2",
+    "typing-inspect==0.7.1",
+    "zipp==3.6.0",
+]
