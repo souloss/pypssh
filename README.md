@@ -1,6 +1,6 @@
 # pypssh
 [![Language](https://img.shields.io/badge/Language-Python-blue.svg)](https://www.python.org/)
-[![Github Workflow Status](https://img.shields.io/github/workflow/status/souloss/pypssh/pypsshci)](https://github.com/souloss/pypssh/actions/workflows/pypsshci.yml)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/souloss/pypssh/pypsshci.yml)
 [![Version](https://img.shields.io/github/v/release/souloss/pypssh?include_prereleases)](https://github.com/souloss/pypssh/releases)
 [![LICENSE](https://img.shields.io/github/license/souloss/pypssh)](LICENSE)
 
