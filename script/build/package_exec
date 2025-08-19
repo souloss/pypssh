@@ -14,5 +14,5 @@ echo "${COMMITDATE}" > BUILD_LASTCOMMITDATE
 echo "${GITTAG}" > BUILD_GITTAG
 
 rm -rf build
-pyinstaller -F pypssh/main.py  --add-data "BUILD_*:."
+pyinstaller -F pypssh/main.py  --add-data "BUILD_*:." -n pypssh
 rm -f {BUILD_GITSHA,BUILD_GITREPO,BUILD_DATE,BUILD_LASTCOMMITDATE,BUILD_GITTAG}
