@@ -6,10 +6,13 @@ GITSHA="$(script/build/write-git-sha)"
 GITREPO="$(script/build/write-git-repo)"
 BUILDDATE="$(script/build/write-build-date)"
 COMMITDATE="$(script/build/write-commit-date)"
+GITTAG="$(script/build/write-git-tag)"
 echo "${GITSHA}" > BUILD_GITSHA
 echo "${GITREPO}" > BUILD_GITREPO
 echo "${BUILDDATE}" > BUILD_DATE
 echo "${COMMITDATE}" > BUILD_LASTCOMMITDATE
+echo "${GITTAG}" > BUILD_GITTAG
+
 rm -rf build
-pyinstaller -F pypssh.py  --add-data "BUILD_*:."
-rm -f {BUILD_GITSHA,BUILD_GITREPO,BUILD_DATE,BUILD_LASTCOMMITDATE}
+pyinstaller -F pypssh/main.py  --add-data "BUILD_*:."
+rm -f {BUILD_GITSHA,BUILD_GITREPO,BUILD_DATE,BUILD_LASTCOMMITDATE,BUILD_GITTAG}
